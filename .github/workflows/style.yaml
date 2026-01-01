@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system ruff ty
+          uv pip install --system ruff==0.12.3 ty==0.0.1a21
 
       - name: Run ruff linting
         run: ruff check --config=pyproject.toml .
