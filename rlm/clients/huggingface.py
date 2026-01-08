@@ -22,6 +22,7 @@ class HuggingFaceClient(BaseLM):
         self,
         api_key: str | None = None,
         model_name: str | None = None,
+        base_url: str | None = None,
         **kwargs,
     ):
         super().__init__(model_name=model_name, **kwargs)
@@ -29,10 +30,24 @@ class HuggingFaceClient(BaseLM):
         if api_key is None:
             api_key = DEFAULT_HF_TOKEN
 
-        # api_key is optional for public models, but required for private/gated models
-        self.client = InferenceClient(token=api_key)
-        self.async_client = AsyncInferenceClient(token=api_key)
+        self.base_url = base_url
         self.model_name = model_name
+
+        # Initialize clients
+        # Logic:
+        # 1. If base_url is provided, connect to it. Use model_name for payload.
+        # 2. If model_name is a URL, connect to it. Use None for payload (legacy/TGI behavior).
+        # 3. Else, connect to Hub (default). Use model_name for payload.
+
+        client_model = None
+        if base_url:
+            client_model = base_url
+        elif model_name and model_name.startswith(("http://", "https://")):
+            client_model = model_name
+
+        # api_key is optional for public models, but required for private/gated models
+        self.client = InferenceClient(token=api_key, model=client_model)
+        self.async_client = AsyncInferenceClient(token=api_key, model=client_model)
 
         # Per-model usage tracking
         self.model_call_counts: dict[str, int] = defaultdict(int)
@@ -47,13 +62,26 @@ class HuggingFaceClient(BaseLM):
         messages = self._prepare_messages(prompt)
 
         model = model or self.model_name
-        if not model:
-            raise ValueError("Model name is required for Hugging Face client.")
+
+        # Determine effective model for payload
+        call_model = model
+        if self.base_url:
+            # Explicit base_url means we must send the model name in payload
+            if not call_model:
+                 raise ValueError("Model name is required when using base_url.")
+        elif model and model.startswith(("http://", "https://")):
+            # URL as model name -> Don't send it in payload (avoids 404/Bad Request on some backends)
+            call_model = None
+        elif not model:
+             raise ValueError("Model name is required for Hugging Face client.")
 
         # Note: InferenceClient.chat_completion is compatible with OpenAI messages format
-        response = self.client.chat_completion(messages=messages, model=model)
+        response = self.client.chat_completion(messages=messages, model=call_model)
 
-        self._track_cost(response, model)
+        # Track cost using the logical model name (for reporting)
+        track_model = model or "unknown"
+        self._track_cost(response, track_model)
+
         return response.choices[0].message.content
 
     async def acompletion(
@@ -62,12 +90,21 @@ class HuggingFaceClient(BaseLM):
         messages = self._prepare_messages(prompt)
 
         model = model or self.model_name
-        if not model:
-            raise ValueError("Model name is required for Hugging Face client.")
 
-        response = await self.async_client.chat_completion(messages=messages, model=model)
+        call_model = model
+        if self.base_url:
+            if not call_model:
+                 raise ValueError("Model name is required when using base_url.")
+        elif model and model.startswith(("http://", "https://")):
+            call_model = None
+        elif not model:
+             raise ValueError("Model name is required for Hugging Face client.")
 
-        self._track_cost(response, model)
+        response = await self.async_client.chat_completion(messages=messages, model=call_model)
+
+        track_model = model or "unknown"
+        self._track_cost(response, track_model)
+
         return response.choices[0].message.content
 
     def _prepare_messages(self, prompt: str | list[dict[str, Any]]) -> list[dict[str, Any]]:
