@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 from dotenv import load_dotenv
+from huggingface_hub.errors import HfHubHTTPError
 
 from rlm.clients.huggingface import HuggingFaceClient
 from rlm.core.types import ModelUsageSummary, UsageSummary
@@ -137,13 +138,18 @@ class TestHuggingFaceClientIntegration(unittest.IsolatedAsyncioTestCase):
         model_name = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
 
         client = HuggingFaceClient(model_name=model_name, base_url=base_url)
-        result = client.completion("What is 2+2? Reply with just the number.")
-        self.assertTrue(len(result) > 0)
+        try:
+            result = client.completion("What is 2+2? Reply with just the number.")
+            self.assertTrue(len(result) > 0)
 
-        # Verify usage was tracked
-        usage = client.get_usage_summary()
-        self.assertIn(model_name, usage.model_usage_summaries)
-        self.assertEqual(usage.model_usage_summaries[model_name].total_calls, 1)
+            # Verify usage was tracked
+            usage = client.get_usage_summary()
+            self.assertIn(model_name, usage.model_usage_summaries)
+            self.assertEqual(usage.model_usage_summaries[model_name].total_calls, 1)
+        except HfHubHTTPError as e:
+            if e.response.status_code == 503:
+                self.skipTest("Endpoint is scaled to zero (503 Service Unavailable)")
+            raise
 
     async def test_async_completion(self):
         """Test async completion."""
@@ -151,8 +157,13 @@ class TestHuggingFaceClientIntegration(unittest.IsolatedAsyncioTestCase):
         model_name = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
 
         client = HuggingFaceClient(model_name=model_name, base_url=base_url)
-        result = await client.acompletion("What is 3+3? Reply with just the number.")
-        self.assertTrue(len(result) > 0)
+        try:
+            result = await client.acompletion("What is 3+3? Reply with just the number.")
+            self.assertTrue(len(result) > 0)
+        except HfHubHTTPError as e:
+            if e.response.status_code == 503:
+                self.skipTest("Endpoint is scaled to zero (503 Service Unavailable)")
+            raise
 
 
 if __name__ == "__main__":
