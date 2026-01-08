@@ -161,22 +161,25 @@ class TestHuggingFaceClientIntegration:
     def test_simple_completion(self):
         """Test a simple completion with real API."""
         # Using a popular model supported by Inference API
-        client = HuggingFaceClient(model_name="HuggingFaceH4/zephyr-7b-beta")
+        model = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+        client = HuggingFaceClient(model_name=model)
         result = client.completion("What is 2+2? Reply with just the number.")
         assert len(result) > 0
 
         # Verify usage was tracked (if available, otherwise 0)
         usage = client.get_usage_summary()
-        assert "HuggingFaceH4/zephyr-7b-beta" in usage.model_usage_summaries
-        assert usage.model_usage_summaries["HuggingFaceH4/zephyr-7b-beta"].total_calls == 1
+        assert model in usage.model_usage_summaries
+        assert usage.model_usage_summaries[model].total_calls == 1
 
     @pytest.mark.skipif(
         not os.environ.get("HF_TOKEN"),
         reason="HF_TOKEN not set",
     )
+    @pytest.mark.asyncio
     async def test_async_completion(self):
         """Test async completion."""
-        client = HuggingFaceClient(model_name="HuggingFaceH4/zephyr-7b-beta")
+        model = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+        client = HuggingFaceClient(model_name=model)
         result = await client.acompletion("What is 3+3? Reply with just the number.")
         assert len(result) > 0
 
