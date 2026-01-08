@@ -160,8 +160,8 @@ class TestHuggingFaceClientIntegration:
     )
     def test_simple_completion(self):
         """Test a simple completion with real API."""
-        # Using a popular model supported by Inference API
-        model = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+        # Using the endpoint provided by the user
+        model = "https://gmbqgfi725l71vl9.us-east4.gcp.endpoints.huggingface.cloud"
         client = HuggingFaceClient(model_name=model)
         result = client.completion("What is 2+2? Reply with just the number.")
         assert len(result) > 0
@@ -178,7 +178,8 @@ class TestHuggingFaceClientIntegration:
     @pytest.mark.asyncio
     async def test_async_completion(self):
         """Test async completion."""
-        model = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+        # Using the endpoint provided by the user
+        model = "https://gmbqgfi725l71vl9.us-east4.gcp.endpoints.huggingface.cloud"
         client = HuggingFaceClient(model_name=model)
         result = await client.acompletion("What is 3+3? Reply with just the number.")
         assert len(result) > 0
