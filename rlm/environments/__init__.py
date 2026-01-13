@@ -2,8 +2,22 @@ from typing import Any, Literal
 
 from rlm.environments.base_env import BaseEnv, SupportsPersistence
 from rlm.environments.local_repl import LocalREPL
+from rlm.environments.registry import (
+    ENVIRONMENT_REGISTRY,
+    EnvironmentConfig,
+    create_environment,
+    get_supported_environments,
+)
 
-__all__ = ["BaseEnv", "LocalREPL", "SupportsPersistence", "get_environment"]
+__all__ = [
+    "BaseEnv",
+    "LocalREPL",
+    "SupportsPersistence",
+    "get_environment",
+    "ENVIRONMENT_REGISTRY",
+    "EnvironmentConfig",
+    "get_supported_environments",
+]
 
 
 def get_environment(
@@ -12,23 +26,15 @@ def get_environment(
 ) -> BaseEnv:
     """
     Routes a specific environment and the args (as a dict) to the appropriate environment if supported.
-    Currently supported environments: ['local', 'modal', 'docker', 'prime']
+
+    Args:
+        environment: The environment type (e.g., "local", "docker", "modal", "prime")
+        environment_kwargs: Keyword arguments to pass to the environment constructor
+
+    Returns:
+        An instance of BaseEnv for the specified environment type
+
+    Raises:
+        ValueError: If environment is not supported or validation fails
     """
-    if environment == "local":
-        return LocalREPL(**environment_kwargs)
-    elif environment == "modal":
-        from rlm.environments.modal_repl import ModalREPL
-
-        return ModalREPL(**environment_kwargs)
-    elif environment == "docker":
-        from rlm.environments.docker_repl import DockerREPL
-
-        return DockerREPL(**environment_kwargs)
-    elif environment == "prime":
-        from rlm.environments.prime_repl import PrimeREPL
-
-        return PrimeREPL(**environment_kwargs)
-    else:
-        raise ValueError(
-            f"Unknown environment: {environment}. Supported: ['local', 'modal', 'docker', 'prime']"
-        )
+    return create_environment(environment, environment_kwargs)

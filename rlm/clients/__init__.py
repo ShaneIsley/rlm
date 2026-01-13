@@ -3,9 +3,23 @@ from typing import Any
 from dotenv import load_dotenv
 
 from rlm.clients.base_lm import BaseLM
+from rlm.clients.registry import (
+    CLIENT_REGISTRY,
+    ClientConfig,
+    create_client,
+    get_supported_backends,
+)
 from rlm.core.types import ClientBackend
 
 load_dotenv()
+
+__all__ = [
+    "BaseLM",
+    "get_client",
+    "CLIENT_REGISTRY",
+    "ClientConfig",
+    "get_supported_backends",
+]
 
 
 def get_client(
@@ -14,50 +28,15 @@ def get_client(
 ) -> BaseLM:
     """
     Routes a specific backend and the args (as a dict) to the appropriate client if supported.
-    Currently supported backends: ['openai']
+
+    Args:
+        backend: The backend identifier (e.g., "openai", "anthropic", "gemini")
+        backend_kwargs: Keyword arguments to pass to the client constructor
+
+    Returns:
+        An instance of BaseLM for the specified backend
+
+    Raises:
+        ValueError: If backend is not supported or validation fails
     """
-    if backend == "openai":
-        from rlm.clients.openai import OpenAIClient
-
-        return OpenAIClient(**backend_kwargs)
-    elif backend == "vllm":
-        from rlm.clients.openai import OpenAIClient
-
-        assert "base_url" in backend_kwargs, (
-            "base_url is required to be set to local vLLM server address for vLLM"
-        )
-        return OpenAIClient(**backend_kwargs)
-    elif backend == "portkey":
-        from rlm.clients.portkey import PortkeyClient
-
-        return PortkeyClient(**backend_kwargs)
-    elif backend == "openrouter":
-        from rlm.clients.openai import OpenAIClient
-
-        backend_kwargs.setdefault("base_url", "https://openrouter.ai/api/v1")
-        return OpenAIClient(**backend_kwargs)
-    elif backend == "vercel":
-        from rlm.clients.openai import OpenAIClient
-
-        backend_kwargs.setdefault("base_url", "https://ai-gateway.vercel.sh/v1")
-        return OpenAIClient(**backend_kwargs)
-    elif backend == "litellm":
-        from rlm.clients.litellm import LiteLLMClient
-
-        return LiteLLMClient(**backend_kwargs)
-    elif backend == "anthropic":
-        from rlm.clients.anthropic import AnthropicClient
-
-        return AnthropicClient(**backend_kwargs)
-    elif backend == "gemini":
-        from rlm.clients.gemini import GeminiClient
-
-        return GeminiClient(**backend_kwargs)
-    elif backend == "azure_openai":
-        from rlm.clients.azure_openai import AzureOpenAIClient
-
-        return AzureOpenAIClient(**backend_kwargs)
-    else:
-        raise ValueError(
-            f"Unknown backend: {backend}. Supported backends: ['openai', 'vllm', 'portkey', 'openrouter', 'litellm', 'anthropic', 'azure_openai', 'gemini', 'vercel']"
-        )
+    return create_client(backend, backend_kwargs)
