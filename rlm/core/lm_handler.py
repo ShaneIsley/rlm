@@ -181,6 +181,10 @@ class LMHandler:
         """Direct completion call (for main process use)."""
         return self.get_client(model).completion(prompt)
 
+    async def acompletion(self, prompt: str, model: str | None = None) -> str:
+        """Async direct completion call (for main process use)."""
+        return await self.get_client(model).acompletion(prompt)
+
     def __enter__(self):
         self.start()
         return self

@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Protocol, runtime_checkable
 
@@ -26,6 +27,10 @@ class BaseEnv(ABC):
     @abstractmethod
     def execute_code(self, code: str) -> REPLResult:
         raise NotImplementedError
+
+    async def aexecute_code(self, code: str) -> REPLResult:
+        """Async version of execute_code. Default implementation uses thread pool."""
+        return await asyncio.to_thread(self.execute_code, code)
 
 
 class IsolatedEnv(BaseEnv, ABC):
