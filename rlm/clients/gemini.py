@@ -7,6 +7,7 @@ from google import genai
 from google.genai import types
 
 from rlm.clients.base_lm import BaseLM
+from rlm.core.exceptions import ConfigurationError, InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 load_dotenv()
@@ -32,8 +33,9 @@ class GeminiClient(BaseLM):
             api_key = DEFAULT_GEMINI_API_KEY
 
         if api_key is None:
-            raise ValueError(
-                "Gemini API key is required. Set GEMINI_API_KEY env var or pass api_key."
+            raise ConfigurationError(
+                "Gemini API key is required. Set GEMINI_API_KEY env var or pass api_key.",
+                missing_field="api_key",
             )
 
         self.client = genai.Client(api_key=api_key)
@@ -54,7 +56,7 @@ class GeminiClient(BaseLM):
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Gemini client.")
+            raise ModelRequiredError("Gemini client")
 
         config = None
         if system_instruction:
@@ -76,7 +78,7 @@ class GeminiClient(BaseLM):
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Gemini client.")
+            raise ModelRequiredError("Gemini client")
 
         config = None
         if system_instruction:
@@ -122,7 +124,7 @@ class GeminiClient(BaseLM):
 
             return contents, system_instruction
 
-        raise ValueError(f"Invalid prompt type: {type(prompt)}")
+        raise InvalidPromptError(type(prompt))
 
     def _track_cost(self, response: types.GenerateContentResponse, model: str):
         self.model_call_counts[model] += 1

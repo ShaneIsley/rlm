@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from rlm.core.exceptions import UnknownBackendError, ValidationError
+
 
 @dataclass
 class ClientConfig:
@@ -29,7 +31,10 @@ class ClientConfig:
 def _validate_vllm_kwargs(kwargs: dict[str, Any]) -> None:
     """Validate that vLLM backend has required base_url."""
     if "base_url" not in kwargs:
-        raise ValueError("base_url is required to be set to local vLLM server address for vLLM")
+        raise ValidationError(
+            "base_url is required to be set to local vLLM server address for vLLM",
+            backend="vllm",
+        )
 
 
 # Registry of all supported client backends
@@ -104,11 +109,10 @@ def get_required_env_vars(backend: str) -> dict[str, str]:
         Dict mapping kwarg names to environment variable names
 
     Raises:
-        ValueError: If backend is not in registry
+        UnknownBackendError: If backend is not in registry
     """
     if backend not in CLIENT_REGISTRY:
-        supported = get_supported_backends()
-        raise ValueError(f"Unknown backend: {backend}. Supported backends: {supported}")
+        raise UnknownBackendError(backend, get_supported_backends())
 
     return CLIENT_REGISTRY[backend].env_vars.copy()
 
@@ -123,11 +127,10 @@ def load_client_class(backend: str) -> type:
         The client class (not instantiated)
 
     Raises:
-        ValueError: If backend is not in registry
+        UnknownBackendError: If backend is not in registry
     """
     if backend not in CLIENT_REGISTRY:
-        supported = get_supported_backends()
-        raise ValueError(f"Unknown backend: {backend}. Supported backends: {supported}")
+        raise UnknownBackendError(backend, get_supported_backends())
 
     config = CLIENT_REGISTRY[backend]
     module = importlib.import_module(config.module)
@@ -150,11 +153,11 @@ def create_client(backend: str, backend_kwargs: dict[str, Any]):
         An instance of BaseLM subclass
 
     Raises:
-        ValueError: If backend is not in registry or validation fails
+        UnknownBackendError: If backend is not in registry
+        ValidationError: If validation fails
     """
     if backend not in CLIENT_REGISTRY:
-        supported = get_supported_backends()
-        raise ValueError(f"Unknown backend: {backend}. Supported backends: {supported}")
+        raise UnknownBackendError(backend, get_supported_backends())
 
     config = CLIENT_REGISTRY[backend]
 

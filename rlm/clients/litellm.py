@@ -4,6 +4,7 @@ from typing import Any
 import litellm
 
 from rlm.clients.base_lm import BaseLM
+from rlm.core.exceptions import InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 
@@ -37,11 +38,11 @@ class LiteLLMClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for LiteLLM client.")
+            raise ModelRequiredError("LiteLLM client")
 
         kwargs = {"model": model, "messages": messages}
         if self.api_key:
@@ -61,11 +62,11 @@ class LiteLLMClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for LiteLLM client.")
+            raise ModelRequiredError("LiteLLM client")
 
         kwargs = {"model": model, "messages": messages}
         if self.api_key:
