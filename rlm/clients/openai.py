@@ -1,25 +1,19 @@
-import os
 from collections import defaultdict
 from typing import Any
 
 import openai
-from dotenv import load_dotenv
 
 from rlm.clients.base_lm import BaseLM
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
-load_dotenv()
-
-# Load API keys from environment variables
-DEFAULT_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DEFAULT_OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-DEFAULT_VERCEL_API_KEY = os.getenv("AI_GATEWAY_API_KEY")
+# Prime Intellect uses OpenAI-compatible API
 DEFAULT_PRIME_INTELLECT_BASE_URL = "https://api.pinference.ai/api/v1/"
 
 
 class OpenAIClient(BaseLM):
     """
-    LM Client for running models with the OpenAI API. Works with vLLM as well.
+    LM Client for running models with the OpenAI API. Works with vLLM and
+    other OpenAI-compatible providers as well.
     """
 
     def __init__(
@@ -31,15 +25,7 @@ class OpenAIClient(BaseLM):
     ):
         super().__init__(model_name=model_name, **kwargs)
 
-        if api_key is None:
-            if base_url == "https://api.openai.com/v1" or base_url is None:
-                api_key = DEFAULT_OPENAI_API_KEY
-            elif base_url == "https://openrouter.ai/api/v1":
-                api_key = DEFAULT_OPENROUTER_API_KEY
-            elif base_url == "https://ai-gateway.vercel.sh/v1":
-                api_key = DEFAULT_VERCEL_API_KEY
-
-        # For vLLM, set base_url to local vLLM server address.
+        # API key is resolved by registry from env vars, but can be passed directly
         self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
         self.async_client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
@@ -127,3 +113,28 @@ class OpenAIClient(BaseLM):
             total_input_tokens=self.last_prompt_tokens,
             total_output_tokens=self.last_completion_tokens,
         )
+
+    def list_models(self) -> list[str] | None:
+        """List available models from the OpenAI API.
+
+        Returns:
+            Sorted list of model IDs available from the API.
+        """
+        try:
+            models = self.client.models.list()
+            return sorted([model.id for model in models.data])
+        except Exception:
+            # May fail if API doesn't support model listing (e.g., some vLLM setups)
+            return None
+
+    async def alist_models(self) -> list[str] | None:
+        """Async version of list_models.
+
+        Returns:
+            Sorted list of model IDs available from the API.
+        """
+        try:
+            models = await self.async_client.models.list()
+            return sorted([model.id for model in models.data])
+        except Exception:
+            return None

@@ -7,6 +7,7 @@ from rlm.clients.registry import (
     CLIENT_REGISTRY,
     ClientConfig,
     create_client,
+    get_required_env_vars,
     get_supported_backends,
 )
 from rlm.core.types import ClientBackend
@@ -19,6 +20,7 @@ __all__ = [
     "CLIENT_REGISTRY",
     "ClientConfig",
     "get_supported_backends",
+    "get_required_env_vars",
 ]
 
 

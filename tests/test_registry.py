@@ -1,10 +1,11 @@
 """Tests for registry-based client and environment loading."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rlm.clients import get_client, get_supported_backends
+from rlm.clients import get_client, get_required_env_vars, get_supported_backends
 from rlm.clients.registry import (
     CLIENT_REGISTRY,
     ClientConfig,
@@ -210,6 +211,154 @@ class TestRegistryIntegration:
         assert isinstance(env, BaseEnv)
         assert isinstance(env, LocalREPL)
         env.cleanup()
+
+
+class TestEnvVarResolution:
+    """Tests for environment variable resolution in registry."""
+
+    def test_get_required_env_vars_returns_mapping(self):
+        """get_required_env_vars returns env var mapping for backend."""
+        env_vars = get_required_env_vars("openai")
+        assert env_vars == {"api_key": "OPENAI_API_KEY"}
+
+    def test_get_required_env_vars_for_openrouter(self):
+        """openrouter has its own env var."""
+        env_vars = get_required_env_vars("openrouter")
+        assert env_vars == {"api_key": "OPENROUTER_API_KEY"}
+
+    def test_get_required_env_vars_for_azure(self):
+        """azure_openai has multiple env vars."""
+        env_vars = get_required_env_vars("azure_openai")
+        assert "api_key" in env_vars
+        assert "azure_endpoint" in env_vars
+        assert env_vars["api_key"] == "AZURE_OPENAI_API_KEY"
+        assert env_vars["azure_endpoint"] == "AZURE_OPENAI_ENDPOINT"
+
+    def test_env_var_resolved_when_set(self):
+        """Environment variables are resolved when set."""
+        with patch("rlm.clients.openai.OpenAIClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            # Set env var
+            with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key-from-env"}):
+                create_client("openai", {"model_name": "gpt-4"})
+
+            call_kwargs = mock_cls.call_args.kwargs
+            assert call_kwargs["api_key"] == "test-key-from-env"
+
+    def test_user_kwargs_override_env_vars(self):
+        """User-provided kwargs override environment variables."""
+        with patch("rlm.clients.openai.OpenAIClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            with patch.dict(os.environ, {"OPENAI_API_KEY": "env-key"}):
+                create_client("openai", {"model_name": "gpt-4", "api_key": "user-key"})
+
+            call_kwargs = mock_cls.call_args.kwargs
+            assert call_kwargs["api_key"] == "user-key"
+
+    def test_defaults_override_env_vars(self):
+        """Registry defaults override environment variables."""
+        with patch("rlm.clients.openai.OpenAIClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            # openrouter has default base_url, even if env var was set for base_url
+            create_client("openrouter", {"model_name": "test", "api_key": "key"})
+
+            call_kwargs = mock_cls.call_args.kwargs
+            assert call_kwargs["base_url"] == "https://openrouter.ai/api/v1"
+
+    def test_client_config_has_env_vars_field(self):
+        """ClientConfig dataclass has env_vars field."""
+        config = ClientConfig(
+            module="test.module",
+            class_name="TestClass",
+            env_vars={"api_key": "TEST_API_KEY"},
+        )
+        assert config.env_vars == {"api_key": "TEST_API_KEY"}
+
+    def test_all_backends_have_env_vars_defined(self):
+        """All backends that need API keys have env_vars defined."""
+        # These backends should have api_key env var
+        api_key_backends = ["openai", "openrouter", "vercel", "anthropic", "gemini", "portkey"]
+        for backend in api_key_backends:
+            config = CLIENT_REGISTRY[backend]
+            assert "api_key" in config.env_vars, f"{backend} missing api_key env var"
+
+
+class TestListModels:
+    """Tests for list_models functionality."""
+
+    def test_base_lm_list_models_returns_none(self):
+        """BaseLM.list_models returns None by default."""
+        from rlm.clients.base_lm import BaseLM
+
+        # Create a minimal concrete implementation for testing
+        class TestLM(BaseLM):
+            def completion(self, prompt):
+                return "test"
+
+            async def acompletion(self, prompt):
+                return "test"
+
+            def get_usage_summary(self):
+                return None
+
+            def get_last_usage(self):
+                return None
+
+        lm = TestLM(model_name="test")
+        assert lm.list_models() is None
+
+    def test_openai_client_has_list_models(self):
+        """OpenAIClient implements list_models."""
+        from rlm.clients.openai import OpenAIClient
+
+        assert hasattr(OpenAIClient, "list_models")
+        assert hasattr(OpenAIClient, "alist_models")
+
+    def test_openai_list_models_returns_list_on_success(self):
+        """OpenAIClient.list_models returns list when API succeeds."""
+        from rlm.clients.openai import OpenAIClient
+
+        with patch("openai.OpenAI") as mock_openai:
+            # Mock the models.list() response
+            mock_model1 = MagicMock()
+            mock_model1.id = "gpt-4"
+            mock_model2 = MagicMock()
+            mock_model2.id = "gpt-3.5-turbo"
+            mock_models_response = MagicMock()
+            mock_models_response.data = [mock_model1, mock_model2]
+
+            mock_client = MagicMock()
+            mock_client.models.list.return_value = mock_models_response
+            mock_openai.return_value = mock_client
+
+            client = OpenAIClient(api_key="test", model_name="gpt-4")
+            models = client.list_models()
+
+            assert models is not None
+            assert isinstance(models, list)
+            assert "gpt-4" in models
+            assert "gpt-3.5-turbo" in models
+            assert models == sorted(models)  # Should be sorted
+
+    def test_openai_list_models_returns_none_on_error(self):
+        """OpenAIClient.list_models returns None when API fails."""
+        from rlm.clients.openai import OpenAIClient
+
+        with patch("openai.OpenAI") as mock_openai:
+            mock_client = MagicMock()
+            mock_client.models.list.side_effect = Exception("API Error")
+            mock_openai.return_value = mock_client
+
+            client = OpenAIClient(api_key="test", model_name="gpt-4")
+            models = client.list_models()
+
+            assert models is None
 
 
 if __name__ == "__main__":

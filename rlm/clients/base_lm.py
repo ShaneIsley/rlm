@@ -31,3 +31,25 @@ class BaseLM(ABC):
     def get_last_usage(self) -> UsageSummary:
         """Get the last cost summary of the model."""
         raise NotImplementedError
+
+    def list_models(self) -> list[str] | None:
+        """List available models from the provider.
+
+        Returns:
+            List of model IDs if the provider supports listing models,
+            None if not supported.
+
+        Note:
+            This method is optional. Subclasses that support model listing
+            should override this method. The default implementation returns None.
+        """
+        return None
+
+    async def alist_models(self) -> list[str] | None:
+        """Async version of list_models.
+
+        Returns:
+            List of model IDs if the provider supports listing models,
+            None if not supported.
+        """
+        return None
