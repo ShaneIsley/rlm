@@ -31,6 +31,10 @@ ENVIRONMENT_REGISTRY: dict[str, EnvironmentConfig] = {
         module="rlm.environments.local_repl",
         class_name="LocalREPL",
     ),
+    "subprocess": EnvironmentConfig(
+        module="rlm.environments.subprocess_repl",
+        class_name="SubprocessREPL",
+    ),
     "modal": EnvironmentConfig(
         module="rlm.environments.modal_repl",
         class_name="ModalREPL",
