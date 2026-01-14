@@ -549,8 +549,17 @@ class SubprocessREPL(NonIsolatedEnv):
 (deny file-read* (subpath "{home_dir}"))
 (deny file-read* (subpath "/Users"))
 (deny file-read* (subpath "/home"))
+(deny file-read* (subpath "/etc"))
+(deny file-read* (subpath "/private/etc"))
 
-;; But allow our specific paths (overrides the denies above)
+;; Allow specific /etc files needed for SSL/DNS
+(allow file-read* (literal "/etc/ssl/cert.pem"))
+(allow file-read* (literal "/etc/ssl/certs"))
+(allow file-read* (literal "/etc/resolv.conf"))
+(allow file-read* (literal "/private/etc/ssl/cert.pem"))
+(allow file-read* (literal "/private/etc/resolv.conf"))
+
+;; Allow our specific paths (overrides the denies above)
 (allow file-read* (subpath "{real_temp_dir}"))
 (allow file-read* (subpath "{temp_dir}"))
 (allow file-read* (subpath "{real_venv_path}"))
