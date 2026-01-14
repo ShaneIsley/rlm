@@ -510,23 +510,48 @@ class SubprocessREPL(NonIsolatedEnv):
         if not os.path.exists("/usr/bin/sandbox-exec"):
             return cmd
 
+        # Resolve symlinks (e.g., /var/folders -> /private/var/folders)
+        real_temp_dir = os.path.realpath(self.temp_dir)
+        real_venv_path = os.path.realpath(self.venv_path)
+
         profile = f"""
 (version 1)
 (deny default)
+
+;; Allow process execution
 (allow process-fork process-exec)
+(allow process-exec* (subpath "{real_venv_path}"))
+
+;; System directories (read-only)
 (allow file-read* (subpath "/usr"))
 (allow file-read* (subpath "/Library"))
 (allow file-read* (subpath "/System"))
 (allow file-read* (subpath "/private/var"))
+(allow file-read* (subpath "/var"))
 (allow file-read* (subpath "/dev"))
 (allow file-read* (subpath "/bin"))
 (allow file-read* (subpath "/sbin"))
-(allow file-read* (subpath "{self.venv_path}"))
-(allow file-read* file-write* (subpath "{self.temp_dir}"))
+(allow file-read* (subpath "/etc"))
+(allow file-read* (subpath "/Applications"))
+(allow file-read* (subpath "/opt"))
+
+;; Allow reading the venv (may be outside temp_dir on some systems)
+(allow file-read* (subpath "{real_venv_path}"))
+
+;; Allow read/write in temp directory
+(allow file-read* file-write* (subpath "{real_temp_dir}"))
+
+;; Socket communication
 (allow file-read* file-write* (literal "{self.socket_path}"))
+(allow network-bind network-inbound (local unix-socket))
+
+;; System calls
 (allow sysctl-read)
 (allow mach-lookup)
-(deny network*)
+
+;; Block external network
+(deny network-outbound (remote ip))
+(deny network* (remote ip))
 """
         profile_path = os.path.join(self.temp_dir, "sandbox.sb")
         with open(profile_path, "w") as f:
