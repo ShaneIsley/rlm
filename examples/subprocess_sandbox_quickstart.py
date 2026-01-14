@@ -12,9 +12,16 @@ Python code execution with:
 Requirements:
     - uv: curl -LsSf https://astral.sh/uv/install.sh | sh
 
+Platform Notes:
+    - macOS: Full sandbox (network + filesystem) via sandbox-exec
+    - Linux: Requires bubblewrap (bwrap) for filesystem isolation
+    - Linux without bwrap: Only process isolation, no filesystem sandbox
+
 Usage:
     python examples/subprocess_sandbox_quickstart.py
 """
+
+import platform
 
 from rlm.environments import SubprocessREPL
 
@@ -37,6 +44,12 @@ def demonstrate_isolation():
     print("\n" + "=" * 60)
     print("Sandbox Isolation Demo")
     print("=" * 60)
+    print(f"Platform: {platform.system()}")
+    if platform.system() == "Linux":
+        import shutil
+        if not shutil.which("bwrap"):
+            print("Note: bubblewrap not installed - filesystem sandbox disabled")
+    print()
 
     with SubprocessREPL(sandbox=True, timeout=10.0) as repl:
         # Network is blocked
