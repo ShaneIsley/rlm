@@ -2,9 +2,8 @@
 
 import os
 import unittest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 from dotenv import load_dotenv
 from huggingface_hub.errors import HfHubHTTPError
 
@@ -30,7 +29,7 @@ class TestHuggingFaceClientUnit(unittest.TestCase):
         url = "https://example.com"
         model = "test-model"
         with patch("rlm.clients.huggingface.InferenceClient") as MockClient, \
-             patch("rlm.clients.huggingface.AsyncInferenceClient") as MockAsyncClient:
+             patch("rlm.clients.huggingface.AsyncInferenceClient"):
             client = HuggingFaceClient(api_key="test-key", model_name=model, base_url=url)
             self.assertEqual(client.model_name, model)
             self.assertEqual(client.base_url, url)
