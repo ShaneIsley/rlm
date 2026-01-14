@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-SubprocessREPL Quickstart - Sandboxed Python Execution
+SubprocessREPL Demo - Direct Sandbox Usage
 
-This example demonstrates using SubprocessREPL for secure, isolated
-Python code execution with:
+This example demonstrates using SubprocessREPL directly (without an LLM)
+for secure, isolated Python code execution. Shows:
 - UV-managed virtual environments (~20ms creation)
 - macOS sandbox-exec isolation (network, filesystem)
 - Linux bubblewrap isolation (if available)
@@ -18,7 +18,7 @@ Platform Notes:
     - Linux without bwrap: Only process isolation, no filesystem sandbox
 
 Usage:
-    python examples/subprocess_sandbox_quickstart.py
+    python examples/subprocess_repl_demo.py
 """
 
 import platform
@@ -198,7 +198,7 @@ print(result)
 
 
 if __name__ == "__main__":
-    print("SubprocessREPL Sandbox Quickstart")
+    print("SubprocessREPL Demo - Direct Sandbox Usage")
     print("Requires: uv (https://astral.sh/uv)\n")
 
     basic_execution()
