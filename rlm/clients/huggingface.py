@@ -3,9 +3,10 @@ from collections import defaultdict
 from typing import Any
 
 from dotenv import load_dotenv
-from huggingface_hub import AsyncInferenceClient, InferenceClient
+from huggingface_hub import AsyncInferenceClient, InferenceClient, list_models
 
 from rlm.clients.base_lm import BaseLM
+from rlm.core.exceptions import InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 load_dotenv()
@@ -30,6 +31,7 @@ class HuggingFaceClient(BaseLM):
         if api_key is None:
             api_key = DEFAULT_HF_TOKEN
 
+        self.api_key = api_key
         self.base_url = base_url
         self.model_name = model_name
 
@@ -68,12 +70,12 @@ class HuggingFaceClient(BaseLM):
         if self.base_url:
             # Explicit base_url means we must send the model name in payload
             if not call_model:
-                 raise ValueError("Model name is required when using base_url.")
+                raise ModelRequiredError("HuggingFace client (base_url mode)")
         elif model and model.startswith(("http://", "https://")):
             # URL as model name -> Don't send it in payload (avoids 404/Bad Request on some backends)
             call_model = None
         elif not model:
-             raise ValueError("Model name is required for Hugging Face client.")
+            raise ModelRequiredError("HuggingFace client")
 
         # Note: InferenceClient.chat_completion is compatible with OpenAI messages format
         response = self.client.chat_completion(messages=messages, model=call_model)
@@ -94,11 +96,11 @@ class HuggingFaceClient(BaseLM):
         call_model = model
         if self.base_url:
             if not call_model:
-                 raise ValueError("Model name is required when using base_url.")
+                raise ModelRequiredError("HuggingFace client (base_url mode)")
         elif model and model.startswith(("http://", "https://")):
             call_model = None
         elif not model:
-             raise ValueError("Model name is required for Hugging Face client.")
+            raise ModelRequiredError("HuggingFace client")
 
         response = await self.async_client.chat_completion(messages=messages, model=call_model)
 
@@ -113,7 +115,7 @@ class HuggingFaceClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             return prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
     def _track_cost(self, response: Any, model: str):
         self.model_call_counts[model] += 1
@@ -148,3 +150,37 @@ class HuggingFaceClient(BaseLM):
             total_input_tokens=self.last_prompt_tokens,
             total_output_tokens=self.last_completion_tokens,
         )
+
+    def list_models(self) -> list[str] | None:
+        """List available text-generation models from Hugging Face Hub.
+
+        Returns:
+            Sorted list of model IDs that support text generation,
+            or None if listing fails.
+        """
+        try:
+            # List models that support text-generation (chat/completion)
+            models = list_models(
+                task="text-generation",
+                sort="downloads",
+                direction=-1,
+                limit=100,
+            )
+            model_ids = sorted([m.id for m in models])
+            return model_ids
+        except Exception:
+            return None
+
+    async def alist_models(self) -> list[str] | None:
+        """Async version of list_models.
+
+        Returns:
+            Sorted list of model IDs that support text generation,
+            or None if listing fails.
+
+        Note:
+            Currently uses sync implementation as huggingface_hub's
+            list_models doesn't have an async variant.
+        """
+        # huggingface_hub doesn't provide async list_models, use sync version
+        return self.list_models()

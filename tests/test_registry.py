@@ -45,6 +45,7 @@ class TestClientRegistry:
             "anthropic",
             "gemini",
             "azure_openai",
+            "huggingface",
         ]
         for backend in expected:
             assert backend in CLIENT_REGISTRY
@@ -284,7 +285,7 @@ class TestEnvVarResolution:
     def test_all_backends_have_env_vars_defined(self):
         """All backends that need API keys have env_vars defined."""
         # These backends should have api_key env var
-        api_key_backends = ["openai", "openrouter", "vercel", "anthropic", "gemini", "portkey"]
+        api_key_backends = ["openai", "openrouter", "vercel", "anthropic", "gemini", "portkey", "huggingface"]
         for backend in api_key_backends:
             config = CLIENT_REGISTRY[backend]
             assert "api_key" in config.env_vars, f"{backend} missing api_key env var"
@@ -360,6 +361,13 @@ class TestListModels:
             models = client.list_models()
 
             assert models is None
+
+    def test_huggingface_client_has_list_models(self):
+        """HuggingFaceClient implements list_models."""
+        from rlm.clients.huggingface import HuggingFaceClient
+
+        assert hasattr(HuggingFaceClient, "list_models")
+        assert hasattr(HuggingFaceClient, "alist_models")
 
 
 if __name__ == "__main__":

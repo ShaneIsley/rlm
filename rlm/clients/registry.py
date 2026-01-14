@@ -91,6 +91,11 @@ CLIENT_REGISTRY: dict[str, ClientConfig] = {
             "azure_endpoint": "AZURE_OPENAI_ENDPOINT",
         },
     ),
+    "huggingface": ClientConfig(
+        module="rlm.clients.huggingface",
+        class_name="HuggingFaceClient",
+        env_vars={"api_key": "HF_TOKEN"},
+    ),
 }
 
 

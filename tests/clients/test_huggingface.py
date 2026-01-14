@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from huggingface_hub.errors import HfHubHTTPError
 
 from rlm.clients.huggingface import HuggingFaceClient
+from rlm.core.exceptions import InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 load_dotenv()
@@ -115,13 +116,92 @@ class TestHuggingFaceClientUnit(unittest.TestCase):
             messages = client._prepare_messages("Hello world")
             self.assertEqual(messages, [{"role": "user", "content": "Hello world"}])
 
+    def test_prepare_messages_list(self):
+        """Test _prepare_messages with list of dicts input."""
+        with patch("rlm.clients.huggingface.InferenceClient"), \
+             patch("rlm.clients.huggingface.AsyncInferenceClient"):
+            client = HuggingFaceClient(api_key="test-key")
+            input_messages = [{"role": "user", "content": "Hello"}]
+            messages = client._prepare_messages(input_messages)
+            self.assertEqual(messages, input_messages)
+
+    def test_prepare_messages_invalid_type(self):
+        """Test _prepare_messages raises InvalidPromptError for invalid input."""
+        with patch("rlm.clients.huggingface.InferenceClient"), \
+             patch("rlm.clients.huggingface.AsyncInferenceClient"):
+            client = HuggingFaceClient(api_key="test-key")
+            with self.assertRaises(InvalidPromptError):
+                client._prepare_messages(12345)
+
     def test_completion_requires_model(self):
-        """Test completion raises when no model specified."""
+        """Test completion raises ModelRequiredError when no model specified."""
         with patch("rlm.clients.huggingface.InferenceClient"), \
              patch("rlm.clients.huggingface.AsyncInferenceClient"):
             client = HuggingFaceClient(api_key="test-key", model_name=None)
-            with self.assertRaisesRegex(ValueError, "Model name is required"):
+            with self.assertRaises(ModelRequiredError):
                 client.completion("Hello")
+
+    def test_completion_requires_model_with_base_url(self):
+        """Test completion raises ModelRequiredError when using base_url without model."""
+        with patch("rlm.clients.huggingface.InferenceClient"), \
+             patch("rlm.clients.huggingface.AsyncInferenceClient"):
+            client = HuggingFaceClient(api_key="test-key", base_url="https://example.com")
+            with self.assertRaises(ModelRequiredError):
+                client.completion("Hello")
+
+
+class TestHuggingFaceListModels(unittest.TestCase):
+    """Tests for list_models functionality."""
+
+    def test_list_models_returns_sorted_list(self):
+        """Test list_models returns sorted list of model IDs."""
+        with patch("rlm.clients.huggingface.InferenceClient"), \
+             patch("rlm.clients.huggingface.AsyncInferenceClient"), \
+             patch("rlm.clients.huggingface.list_models") as mock_list:
+            # Mock the list_models response
+            mock_model1 = MagicMock()
+            mock_model1.id = "meta-llama/Llama-2-7b"
+            mock_model2 = MagicMock()
+            mock_model2.id = "gpt2"
+            mock_list.return_value = [mock_model1, mock_model2]
+
+            client = HuggingFaceClient(api_key="test-key")
+            models = client.list_models()
+
+            self.assertIsNotNone(models)
+            self.assertIsInstance(models, list)
+            # Should be sorted
+            self.assertEqual(models, sorted(models))
+            self.assertIn("gpt2", models)
+            self.assertIn("meta-llama/Llama-2-7b", models)
+
+    def test_list_models_returns_none_on_error(self):
+        """Test list_models returns None when API fails."""
+        with patch("rlm.clients.huggingface.InferenceClient"), \
+             patch("rlm.clients.huggingface.AsyncInferenceClient"), \
+             patch("rlm.clients.huggingface.list_models") as mock_list:
+            mock_list.side_effect = Exception("API Error")
+
+            client = HuggingFaceClient(api_key="test-key")
+            models = client.list_models()
+
+            self.assertIsNone(models)
+
+    def test_alist_models_delegates_to_list_models(self):
+        """Test alist_models uses the sync list_models implementation."""
+        with patch("rlm.clients.huggingface.InferenceClient"), \
+             patch("rlm.clients.huggingface.AsyncInferenceClient"), \
+             patch("rlm.clients.huggingface.list_models") as mock_list:
+            mock_model = MagicMock()
+            mock_model.id = "test-model"
+            mock_list.return_value = [mock_model]
+
+            client = HuggingFaceClient(api_key="test-key")
+
+            import asyncio
+            result = asyncio.get_event_loop().run_until_complete(client.alist_models())
+
+            self.assertEqual(result, ["test-model"])
 
 
 class TestHuggingFaceClientIntegration(unittest.IsolatedAsyncioTestCase):
