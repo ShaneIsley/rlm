@@ -513,76 +513,49 @@ class SubprocessREPL(NonIsolatedEnv):
         # Get both symlink and real paths (macOS needs both for /var/folders)
         real_temp_dir = os.path.realpath(self.temp_dir)
         real_venv_path = os.path.realpath(self.venv_path)
-        # Also keep original paths in case they differ
         temp_dir = self.temp_dir
         venv_path = self.venv_path
+        home_dir = os.path.expanduser("~")
+        real_home_dir = os.path.realpath(home_dir)
 
         # Find the actual Python interpreter location (may be in ~/.local/share/uv/)
         python_path = os.path.join(self.venv_path, "bin", "python")
         real_python = os.path.realpath(python_path)
-        # Get the parent directory containing the Python installation
-        # e.g., /Users/foo/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none
         python_install_dir = os.path.dirname(os.path.dirname(real_python))
 
-        # Strict sandbox: allow default for process/mach operations,
-        # but explicitly control file and network access
+        # Hybrid approach: allow default then deny specific sensitive paths
+        # This ensures Python can run while blocking access to sensitive data
         profile = f"""
 (version 1)
 
-;; Allow process and system operations (required for Python to run)
+;; Start with permissive defaults (needed for Python/dyld)
 (allow default)
 
 ;; ============ NETWORK ============
-;; DENY: All external network access
+;; Block all external network access
 (deny network-outbound (remote ip))
 
-;; ============ PROCESS EXECUTION ============
-;; Explicitly allow executing Python from our venv and UV installation
-(allow process-exec* (subpath "{real_venv_path}"))
-(allow process-exec* (subpath "{venv_path}"))
-(allow process-exec* (subpath "{python_install_dir}"))
-
 ;; ============ FILE WRITES ============
-;; DENY: All file writes by default
+;; Block ALL writes first
 (deny file-write*)
 
-;; ALLOW: Write only to our temp directory (both symlink and real paths)
+;; Allow writes ONLY to our temp directory
 (allow file-write* (subpath "{real_temp_dir}"))
 (allow file-write* (subpath "{temp_dir}"))
 
 ;; ============ FILE READS ============
-;; DENY: All file reads by default
-(deny file-read*)
+;; Block reads to sensitive directories
+(deny file-read* (subpath "{real_home_dir}"))
+(deny file-read* (subpath "{home_dir}"))
+(deny file-read* (subpath "/Users"))
+(deny file-read* (subpath "/home"))
 
-;; ALLOW: Read from our temp directory (both symlink and real paths)
+;; But allow our specific paths (overrides the denies above)
 (allow file-read* (subpath "{real_temp_dir}"))
 (allow file-read* (subpath "{temp_dir}"))
-
-;; ALLOW: Read from venv (both symlink and real paths)
 (allow file-read* (subpath "{real_venv_path}"))
 (allow file-read* (subpath "{venv_path}"))
-
-;; ALLOW: Read from UV's Python installation (libpython, stdlib)
 (allow file-read* (subpath "{python_install_dir}"))
-
-;; ALLOW: Essential system paths for Python/dyld
-(allow file-read* (subpath "/usr/lib"))
-(allow file-read* (subpath "/System/Library"))
-(allow file-read* (subpath "/Library/Frameworks"))
-(allow file-read* (subpath "/dev"))
-(allow file-read* (literal "/dev/null"))
-(allow file-read* (literal "/dev/urandom"))
-(allow file-read* (literal "/dev/random"))
-
-;; ALLOW: Read dyld shared cache (required for any executable)
-(allow file-read* (subpath "/private/var/db/dyld"))
-(allow file-read* (subpath "/var/db/dyld"))
-
-;; ALLOW: Minimal /etc for SSL/DNS (read-only, non-sensitive)
-(allow file-read* (literal "/etc/ssl/cert.pem"))
-(allow file-read* (literal "/etc/resolv.conf"))
-(allow file-read* (literal "/private/etc/ssl/cert.pem"))
-(allow file-read* (literal "/private/etc/resolv.conf"))
 """
         profile_path = os.path.join(self.temp_dir, "sandbox.sb")
         with open(profile_path, "w") as f:
