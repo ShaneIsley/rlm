@@ -510,9 +510,12 @@ class SubprocessREPL(NonIsolatedEnv):
         if not os.path.exists("/usr/bin/sandbox-exec"):
             return cmd
 
-        # Resolve symlinks (e.g., /var/folders -> /private/var/folders)
+        # Get both symlink and real paths (macOS needs both for /var/folders)
         real_temp_dir = os.path.realpath(self.temp_dir)
         real_venv_path = os.path.realpath(self.venv_path)
+        # Also keep original paths in case they differ
+        temp_dir = self.temp_dir
+        venv_path = self.venv_path
 
         # Find the actual Python interpreter location (may be in ~/.local/share/uv/)
         python_path = os.path.join(self.venv_path, "bin", "python")
@@ -533,22 +536,31 @@ class SubprocessREPL(NonIsolatedEnv):
 ;; DENY: All external network access
 (deny network-outbound (remote ip))
 
+;; ============ PROCESS EXECUTION ============
+;; Explicitly allow executing Python from our venv and UV installation
+(allow process-exec* (subpath "{real_venv_path}"))
+(allow process-exec* (subpath "{venv_path}"))
+(allow process-exec* (subpath "{python_install_dir}"))
+
 ;; ============ FILE WRITES ============
 ;; DENY: All file writes by default
 (deny file-write*)
 
-;; ALLOW: Write only to our temp directory
+;; ALLOW: Write only to our temp directory (both symlink and real paths)
 (allow file-write* (subpath "{real_temp_dir}"))
+(allow file-write* (subpath "{temp_dir}"))
 
 ;; ============ FILE READS ============
 ;; DENY: All file reads by default
 (deny file-read*)
 
-;; ALLOW: Read from our temp directory
+;; ALLOW: Read from our temp directory (both symlink and real paths)
 (allow file-read* (subpath "{real_temp_dir}"))
+(allow file-read* (subpath "{temp_dir}"))
 
-;; ALLOW: Read from venv
+;; ALLOW: Read from venv (both symlink and real paths)
 (allow file-read* (subpath "{real_venv_path}"))
+(allow file-read* (subpath "{venv_path}"))
 
 ;; ALLOW: Read from UV's Python installation (libpython, stdlib)
 (allow file-read* (subpath "{python_install_dir}"))
@@ -564,8 +576,7 @@ class SubprocessREPL(NonIsolatedEnv):
 
 ;; ALLOW: Read dyld shared cache (required for any executable)
 (allow file-read* (subpath "/private/var/db/dyld"))
-(allow file-read* (literal "/var/db/dyld/dyld_shared_cache_arm64e"))
-(allow file-read* (literal "/var/db/dyld/dyld_shared_cache_x86_64"))
+(allow file-read* (subpath "/var/db/dyld"))
 
 ;; ALLOW: Minimal /etc for SSL/DNS (read-only, non-sensitive)
 (allow file-read* (literal "/etc/ssl/cert.pem"))
