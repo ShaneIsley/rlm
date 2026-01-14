@@ -14,6 +14,7 @@ import pytest
 
 import rlm.core.rlm as rlm_module
 from rlm import RLM
+from rlm.core.exceptions import PersistenceError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 
@@ -325,8 +326,8 @@ class TestPersistentModeValidation:
     """Tests for persistent mode validation."""
 
     def test_unsupported_environment_raises_error(self):
-        """Persistent mode should raise error for unsupported environments."""
-        with pytest.raises(ValueError, match="persistent=True is not supported"):
+        """Persistent mode should raise PersistenceError for unsupported environments."""
+        with pytest.raises(PersistenceError, match="persistent=True is not supported"):
             RLM(
                 backend="openai",
                 backend_kwargs={"model_name": "test"},

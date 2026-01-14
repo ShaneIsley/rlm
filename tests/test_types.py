@@ -109,7 +109,7 @@ class TestREPLResult:
         result = REPLResult(stdout="test", stderr="", locals={})
         s = str(result)
         assert "REPLResult" in s
-        assert "stdout=test" in s
+        assert "stdout='test'" in s
 
 
 class TestCodeBlock:

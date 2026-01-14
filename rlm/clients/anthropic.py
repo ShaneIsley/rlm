@@ -4,6 +4,7 @@ from typing import Any
 import anthropic
 
 from rlm.clients.base_lm import BaseLM
+from rlm.core.exceptions import InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 
@@ -36,7 +37,7 @@ class AnthropicClient(BaseLM):
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Anthropic client.")
+            raise ModelRequiredError("Anthropic client")
 
         kwargs = {"model": model, "max_tokens": self.max_tokens, "messages": messages}
         if system:
@@ -53,7 +54,7 @@ class AnthropicClient(BaseLM):
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Anthropic client.")
+            raise ModelRequiredError("Anthropic client")
 
         kwargs = {"model": model, "max_tokens": self.max_tokens, "messages": messages}
         if system:
@@ -80,7 +81,7 @@ class AnthropicClient(BaseLM):
                 else:
                     messages.append(msg)
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         return messages, system
 

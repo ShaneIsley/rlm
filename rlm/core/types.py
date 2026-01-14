@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from types import ModuleType
 from typing import Any, Literal
 
+from rlm.core.exceptions import InvalidPromptError
+
 ClientBackend = Literal[
     "openai",
     "portkey",
@@ -14,7 +16,7 @@ ClientBackend = Literal[
     "gemini",
     "huggingface",
 ]
-EnvironmentType = Literal["local", "docker", "modal", "prime"]
+EnvironmentType = Literal["local", "subprocess", "docker", "modal", "prime"]
 
 
 def _serialize_value(value: Any) -> Any:
@@ -118,13 +120,14 @@ class RLMChatCompletion:
         )
 
 
-@dataclass
 class REPLResult:
+    """Result from REPL code execution."""
+
     stdout: str
     stderr: str
     locals: dict
-    execution_time: float
-    llm_calls: list["RLMChatCompletion"]
+    execution_time: float | None
+    rlm_calls: list["RLMChatCompletion"]
 
     def __init__(
         self,
@@ -140,8 +143,8 @@ class REPLResult:
         self.execution_time = execution_time
         self.rlm_calls = rlm_calls or []
 
-    def __str__(self):
-        return f"REPLResult(stdout={self.stdout}, stderr={self.stderr}, locals={self.locals}, execution_time={self.execution_time}, rlm_calls={len(self.rlm_calls)})"
+    def __repr__(self):
+        return f"REPLResult(stdout={self.stdout!r}, stderr={self.stderr!r}, locals={self.locals}, execution_time={self.execution_time}, rlm_calls={len(self.rlm_calls)})"
 
     def to_dict(self):
         return {
@@ -261,6 +264,6 @@ class QueryMetadata:
             else:
                 self.context_lengths = [len(chunk) for chunk in prompt]
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         self.context_total_length = sum(self.context_lengths)
