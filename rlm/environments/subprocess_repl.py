@@ -516,6 +516,13 @@ class SubprocessREPL(NonIsolatedEnv):
         home_dir = os.path.expanduser("~")
         real_home_dir = os.path.realpath(home_dir)
 
+        # Find the actual Python interpreter location (may be in ~/.local/share/uv/)
+        python_path = os.path.join(self.venv_path, "bin", "python")
+        real_python = os.path.realpath(python_path)
+        # Get the parent directory containing the Python installation
+        # e.g., /Users/foo/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none
+        python_install_dir = os.path.dirname(os.path.dirname(real_python))
+
         # Use a permissive base and deny specific operations
         # This approach works better with Python's runtime requirements
         profile = f"""
@@ -537,14 +544,17 @@ class SubprocessREPL(NonIsolatedEnv):
 ;; ALLOW: Write to our temp directory (override the deny above)
 (allow file-write* (subpath "{real_temp_dir}"))
 
-;; DENY: Reading user's home directory (privacy)
+;; DENY: Reading user's home directory (privacy) - but allow specific paths
 (deny file-read*
     (subpath "{real_home_dir}")
 )
 
-;; ALLOW: Read from our temp and venv (override deny above if venv is in home)
+;; ALLOW: Read from our temp and venv
 (allow file-read* (subpath "{real_temp_dir}"))
 (allow file-read* (subpath "{real_venv_path}"))
+
+;; ALLOW: Read from UV's Python installation (needed for libpython)
+(allow file-read* (subpath "{python_install_dir}"))
 """
         profile_path = os.path.join(self.temp_dir, "sandbox.sb")
         with open(profile_path, "w") as f:
