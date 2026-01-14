@@ -513,8 +513,6 @@ class SubprocessREPL(NonIsolatedEnv):
         # Resolve symlinks (e.g., /var/folders -> /private/var/folders)
         real_temp_dir = os.path.realpath(self.temp_dir)
         real_venv_path = os.path.realpath(self.venv_path)
-        home_dir = os.path.expanduser("~")
-        real_home_dir = os.path.realpath(home_dir)
 
         # Find the actual Python interpreter location (may be in ~/.local/share/uv/)
         python_path = os.path.join(self.venv_path, "bin", "python")
@@ -523,38 +521,57 @@ class SubprocessREPL(NonIsolatedEnv):
         # e.g., /Users/foo/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none
         python_install_dir = os.path.dirname(os.path.dirname(real_python))
 
-        # Use a permissive base and deny specific operations
-        # This approach works better with Python's runtime requirements
+        # Strict sandbox: allow default for process/mach operations,
+        # but explicitly control file and network access
         profile = f"""
 (version 1)
 
-;; Start permissive, then restrict
+;; Allow process and system operations (required for Python to run)
 (allow default)
 
-;; DENY: External network access (TCP/UDP to remote hosts)
+;; ============ NETWORK ============
+;; DENY: All external network access
 (deny network-outbound (remote ip))
 
-;; DENY: Writing outside allowed directories
-(deny file-write*
-    (subpath "/Users")
-    (subpath "/home")
-    (subpath "{real_home_dir}")
-)
+;; ============ FILE WRITES ============
+;; DENY: All file writes by default
+(deny file-write*)
 
-;; ALLOW: Write to our temp directory (override the deny above)
+;; ALLOW: Write only to our temp directory
 (allow file-write* (subpath "{real_temp_dir}"))
 
-;; DENY: Reading user's home directory (privacy) - but allow specific paths
-(deny file-read*
-    (subpath "{real_home_dir}")
-)
+;; ============ FILE READS ============
+;; DENY: All file reads by default
+(deny file-read*)
 
-;; ALLOW: Read from our temp and venv
+;; ALLOW: Read from our temp directory
 (allow file-read* (subpath "{real_temp_dir}"))
+
+;; ALLOW: Read from venv
 (allow file-read* (subpath "{real_venv_path}"))
 
-;; ALLOW: Read from UV's Python installation (needed for libpython)
+;; ALLOW: Read from UV's Python installation (libpython, stdlib)
 (allow file-read* (subpath "{python_install_dir}"))
+
+;; ALLOW: Essential system paths for Python/dyld
+(allow file-read* (subpath "/usr/lib"))
+(allow file-read* (subpath "/System/Library"))
+(allow file-read* (subpath "/Library/Frameworks"))
+(allow file-read* (subpath "/dev"))
+(allow file-read* (literal "/dev/null"))
+(allow file-read* (literal "/dev/urandom"))
+(allow file-read* (literal "/dev/random"))
+
+;; ALLOW: Read dyld shared cache (required for any executable)
+(allow file-read* (subpath "/private/var/db/dyld"))
+(allow file-read* (literal "/var/db/dyld/dyld_shared_cache_arm64e"))
+(allow file-read* (literal "/var/db/dyld/dyld_shared_cache_x86_64"))
+
+;; ALLOW: Minimal /etc for SSL/DNS (read-only, non-sensitive)
+(allow file-read* (literal "/etc/ssl/cert.pem"))
+(allow file-read* (literal "/etc/resolv.conf"))
+(allow file-read* (literal "/private/etc/ssl/cert.pem"))
+(allow file-read* (literal "/private/etc/resolv.conf"))
 """
         profile_path = os.path.join(self.temp_dir, "sandbox.sb")
         with open(profile_path, "w") as f:
