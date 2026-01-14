@@ -4,6 +4,7 @@ from typing import Any
 import openai
 
 from rlm.clients.base_lm import BaseLM
+from rlm.core.exceptions import APIError, InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 # Prime Intellect uses OpenAI-compatible API
@@ -42,11 +43,11 @@ class OpenAIClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for OpenAI client.")
+            raise ModelRequiredError("OpenAI client")
 
         extra_body = {}
         if self.client.base_url == DEFAULT_PRIME_INTELLECT_BASE_URL:
@@ -66,11 +67,11 @@ class OpenAIClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for OpenAI client.")
+            raise ModelRequiredError("OpenAI client")
 
         extra_body = {}
         if self.client.base_url == DEFAULT_PRIME_INTELLECT_BASE_URL:
@@ -87,7 +88,7 @@ class OpenAIClient(BaseLM):
 
         usage = getattr(response, "usage", None)
         if usage is None:
-            raise ValueError("No usage data received. Tracking tokens not possible.")
+            raise APIError("No usage data received. Tracking tokens not possible.")
 
         self.model_input_tokens[model] += usage.prompt_tokens
         self.model_output_tokens[model] += usage.completion_tokens

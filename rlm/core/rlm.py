@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
 from rlm.clients import BaseLM, get_client
+from rlm.core.exceptions import ConfigurationError, PersistenceError
 from rlm.core.lm_handler import LMHandler
 from rlm.core.types import (
     ClientBackend,
@@ -79,7 +80,7 @@ class RLM:
         # Validate other_backends: currently only support one additional backend
         if other_backends is not None:
             if len(other_backends) != 1:
-                raise ValueError(
+                raise ConfigurationError(
                     "We currently only support one additional backend for the recursive sub-calls! "
                     "This model will be the model used for recursive sub-calls, but this will change in the future"
                 )
@@ -153,10 +154,11 @@ class RLM:
             environment = self._persistent_env
             # Defensive check: ensure environment supports persistence methods
             if not self._env_supports_persistence(environment):
-                raise RuntimeError(
+                raise PersistenceError(
                     f"Persistent environment of type '{type(environment).__name__}' does not "
                     f"implement required methods (update_handler_address, add_context, get_context_count). "
-                    f"This should have been caught at initialization."
+                    f"This should have been caught at initialization.",
+                    environment_type=type(environment).__name__,
                 )
             environment.update_handler_address((lm_handler.host, lm_handler.port))
             environment.add_context(prompt)
@@ -209,10 +211,11 @@ class RLM:
             environment = self._persistent_env
             # Defensive check: ensure environment supports persistence methods
             if not self._env_supports_persistence(environment):
-                raise RuntimeError(
+                raise PersistenceError(
                     f"Persistent environment of type '{type(environment).__name__}' does not "
                     f"implement required methods (update_handler_address, add_context, get_context_count). "
-                    f"This should have been caught at initialization."
+                    f"This should have been caught at initialization.",
+                    environment_type=type(environment).__name__,
                 )
             environment.update_handler_address((lm_handler.host, lm_handler.port))
             environment.add_context(prompt)
@@ -614,11 +617,12 @@ class RLM:
         persistent_supported_environments = {"local"}
 
         if self.environment_type not in persistent_supported_environments:
-            raise ValueError(
+            raise PersistenceError(
                 f"persistent=True is not supported for environment type '{self.environment_type}'. "
                 f"Persistent mode requires environments that implement update_handler_address(), "
                 f"add_context(), and get_context_count(). "
-                f"Supported environments: {sorted(persistent_supported_environments)}"
+                f"Supported environments: {sorted(persistent_supported_environments)}",
+                environment_type=self.environment_type,
             )
 
     @staticmethod

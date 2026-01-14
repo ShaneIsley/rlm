@@ -7,6 +7,7 @@ import pytest
 from dotenv import load_dotenv
 
 from rlm.clients.gemini import GeminiClient
+from rlm.core.exceptions import ConfigurationError, InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 load_dotenv()
@@ -28,10 +29,10 @@ class TestGeminiClientUnit:
             assert client.model_name == "gemini-2.5-flash"
 
     def test_init_requires_api_key(self):
-        """Test client raises error when no API key provided."""
+        """Test client raises ConfigurationError when no API key provided."""
         with patch.dict(os.environ, {}, clear=True):
             with patch("rlm.clients.gemini.DEFAULT_GEMINI_API_KEY", None):
-                with pytest.raises(ValueError, match="Gemini API key is required"):
+                with pytest.raises(ConfigurationError, match="Gemini API key is required"):
                     GeminiClient(api_key=None)
 
     def test_usage_tracking_initialization(self):
@@ -102,17 +103,17 @@ class TestGeminiClientUnit:
             assert contents[2].role == "user"
 
     def test_prepare_contents_invalid_type(self):
-        """Test _prepare_contents raises on invalid input."""
+        """Test _prepare_contents raises InvalidPromptError on invalid input."""
         with patch("rlm.clients.gemini.genai.Client"):
             client = GeminiClient(api_key="test-key")
-            with pytest.raises(ValueError, match="Invalid prompt type"):
+            with pytest.raises(InvalidPromptError, match="Invalid prompt type"):
                 client._prepare_contents(12345)
 
     def test_completion_requires_model(self):
-        """Test completion raises when no model specified."""
+        """Test completion raises ModelRequiredError when no model specified."""
         with patch("rlm.clients.gemini.genai.Client"):
             client = GeminiClient(api_key="test-key", model_name=None)
-            with pytest.raises(ValueError, match="Model name is required"):
+            with pytest.raises(ModelRequiredError, match="Model name is required"):
                 client.completion("Hello")
 
     def test_completion_with_mocked_response(self):

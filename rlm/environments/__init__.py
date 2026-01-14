@@ -8,10 +8,12 @@ from rlm.environments.registry import (
     create_environment,
     get_supported_environments,
 )
+from rlm.environments.subprocess_repl import SubprocessREPL
 
 __all__ = [
     "BaseEnv",
     "LocalREPL",
+    "SubprocessREPL",
     "SupportsPersistence",
     "get_environment",
     "ENVIRONMENT_REGISTRY",
@@ -21,7 +23,7 @@ __all__ = [
 
 
 def get_environment(
-    environment: Literal["local", "modal", "docker", "prime"],
+    environment: Literal["local", "subprocess", "modal", "docker", "prime"],
     environment_kwargs: dict[str, Any],
 ) -> BaseEnv:
     """

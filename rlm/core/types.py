@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from types import ModuleType
 from typing import Any, Literal
 
+from rlm.core.exceptions import InvalidPromptError
+
 ClientBackend = Literal[
     "openai",
     "portkey",
@@ -13,7 +15,7 @@ ClientBackend = Literal[
     "azure_openai",
     "gemini",
 ]
-EnvironmentType = Literal["local", "docker", "modal", "prime"]
+EnvironmentType = Literal["local", "subprocess", "docker", "modal", "prime"]
 
 
 def _serialize_value(value: Any) -> Any:
@@ -260,6 +262,6 @@ class QueryMetadata:
             else:
                 self.context_lengths = [len(chunk) for chunk in prompt]
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         self.context_total_length = sum(self.context_lengths)

@@ -5,6 +5,7 @@ from portkey_ai import AsyncPortkey, Portkey
 from portkey_ai.api_resources.types.chat_complete_type import ChatCompletions
 
 from rlm.clients.base_lm import BaseLM
+from rlm.core.exceptions import InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 
@@ -37,11 +38,11 @@ class PortkeyClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Portkey client.")
+            raise ModelRequiredError("Portkey client")
 
         response = self.client.chat.completions.create(
             model=model,
@@ -56,11 +57,11 @@ class PortkeyClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Portkey client.")
+            raise ModelRequiredError("Portkey client")
 
         response = await self.async_client.chat.completions.create(model=model, messages=messages)
         self._track_cost(response, model)

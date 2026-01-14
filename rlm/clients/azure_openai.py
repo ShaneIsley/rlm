@@ -6,6 +6,7 @@ import openai
 from dotenv import load_dotenv
 
 from rlm.clients.base_lm import BaseLM
+from rlm.core.exceptions import APIError, ConfigurationError, InvalidPromptError, ModelRequiredError
 from rlm.core.types import ModelUsageSummary, UsageSummary
 
 load_dotenv()
@@ -43,9 +44,10 @@ class AzureOpenAIClient(BaseLM):
             azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
         if azure_endpoint is None:
-            raise ValueError(
+            raise ConfigurationError(
                 "azure_endpoint is required for Azure OpenAI client. "
-                "Set it via argument or AZURE_OPENAI_ENDPOINT environment variable."
+                "Set it via argument or AZURE_OPENAI_ENDPOINT environment variable.",
+                missing_field="azure_endpoint",
             )
 
         self.client = openai.AzureOpenAI(
@@ -75,11 +77,11 @@ class AzureOpenAIClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Azure OpenAI client.")
+            raise ModelRequiredError("Azure OpenAI client")
 
         response = self.client.chat.completions.create(
             model=model,
@@ -96,11 +98,11 @@ class AzureOpenAIClient(BaseLM):
         elif isinstance(prompt, list) and all(isinstance(item, dict) for item in prompt):
             messages = prompt
         else:
-            raise ValueError(f"Invalid prompt type: {type(prompt)}")
+            raise InvalidPromptError(type(prompt))
 
         model = model or self.model_name
         if not model:
-            raise ValueError("Model name is required for Azure OpenAI client.")
+            raise ModelRequiredError("Azure OpenAI client")
 
         response = await self.async_client.chat.completions.create(
             model=model,
@@ -114,7 +116,7 @@ class AzureOpenAIClient(BaseLM):
 
         usage = getattr(response, "usage", None)
         if usage is None:
-            raise ValueError("No usage data received. Tracking tokens not possible.")
+            raise APIError("No usage data received. Tracking tokens not possible.")
 
         self.model_input_tokens[model] += usage.prompt_tokens
         self.model_output_tokens[model] += usage.completion_tokens

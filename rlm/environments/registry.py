@@ -5,6 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from rlm.core.exceptions import UnknownEnvironmentError
+
 
 @dataclass
 class EnvironmentConfig:
@@ -28,6 +30,10 @@ ENVIRONMENT_REGISTRY: dict[str, EnvironmentConfig] = {
     "local": EnvironmentConfig(
         module="rlm.environments.local_repl",
         class_name="LocalREPL",
+    ),
+    "subprocess": EnvironmentConfig(
+        module="rlm.environments.subprocess_repl",
+        class_name="SubprocessREPL",
     ),
     "modal": EnvironmentConfig(
         module="rlm.environments.modal_repl",
@@ -59,11 +65,10 @@ def load_environment_class(environment: str) -> type:
         The environment class (not instantiated)
 
     Raises:
-        ValueError: If environment is not in registry
+        UnknownEnvironmentError: If environment is not in registry
     """
     if environment not in ENVIRONMENT_REGISTRY:
-        supported = get_supported_environments()
-        raise ValueError(f"Unknown environment: {environment}. Supported: {supported}")
+        raise UnknownEnvironmentError(environment, get_supported_environments())
 
     config = ENVIRONMENT_REGISTRY[environment]
     module = importlib.import_module(config.module)
@@ -81,11 +86,10 @@ def create_environment(environment: str, environment_kwargs: dict[str, Any]):
         An instance of BaseEnv subclass
 
     Raises:
-        ValueError: If environment is not in registry or validation fails
+        UnknownEnvironmentError: If environment is not in registry
     """
     if environment not in ENVIRONMENT_REGISTRY:
-        supported = get_supported_environments()
-        raise ValueError(f"Unknown environment: {environment}. Supported: {supported}")
+        raise UnknownEnvironmentError(environment, get_supported_environments())
 
     config = ENVIRONMENT_REGISTRY[environment]
 

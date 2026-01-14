@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rlm.clients import get_client, get_required_env_vars, get_supported_backends
+from rlm.core.exceptions import UnknownBackendError, UnknownEnvironmentError, ValidationError
 from rlm.clients.registry import (
     CLIENT_REGISTRY,
     ClientConfig,
@@ -49,8 +50,8 @@ class TestClientRegistry:
             assert backend in CLIENT_REGISTRY
 
     def test_unknown_backend_raises_with_supported_list(self):
-        """Unknown backend raises ValueError listing all supported backends."""
-        with pytest.raises(ValueError) as exc:
+        """Unknown backend raises UnknownBackendError listing all supported backends."""
+        with pytest.raises(UnknownBackendError) as exc:
             get_client("unknown_backend", {})
 
         error_msg = str(exc.value)
@@ -102,8 +103,8 @@ class TestClientRegistry:
             assert call_kwargs["base_url"] == "https://custom.url"
 
     def test_vllm_requires_base_url(self):
-        """vllm backend raises error without base_url."""
-        with pytest.raises(ValueError, match="base_url is required"):
+        """vllm backend raises ValidationError without base_url."""
+        with pytest.raises(ValidationError, match="base_url is required"):
             create_client("vllm", {"model_name": "test"})
 
     def test_vllm_with_base_url_succeeds(self):
@@ -150,8 +151,8 @@ class TestEnvironmentRegistry:
             assert env in ENVIRONMENT_REGISTRY
 
     def test_unknown_environment_raises_with_supported_list(self):
-        """Unknown environment raises ValueError listing all supported."""
-        with pytest.raises(ValueError) as exc:
+        """Unknown environment raises UnknownEnvironmentError listing all supported."""
+        with pytest.raises(UnknownEnvironmentError) as exc:
             get_environment("unknown_env", {})
 
         error_msg = str(exc.value)
