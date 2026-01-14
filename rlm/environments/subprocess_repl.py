@@ -622,13 +622,15 @@ class SubprocessREPL(NonIsolatedEnv):
 
         cmd = self._get_sandbox_command([python_path, "-c", script])
 
-        env = {
-            "PATH": os.path.join(self.venv_path, "bin"),
+        # Build environment - inherit essential vars for macOS compatibility
+        env = os.environ.copy()
+        env.update({
+            "PATH": os.path.join(self.venv_path, "bin") + ":/usr/bin:/bin",
             "HOME": self.temp_dir,
             "TMPDIR": self.temp_dir,
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONNOUSERSITE": "1",
-        }
+        })
 
         try:
             result = subprocess.run(
@@ -643,7 +645,7 @@ class SubprocessREPL(NonIsolatedEnv):
             # Parse JSON output
             try:
                 lines = result.stdout.strip().split("\n")
-                if lines:
+                if lines and lines[-1]:
                     data = json.loads(lines[-1])
                     return REPLResult(
                         stdout=data.get("stdout", ""),
@@ -655,9 +657,16 @@ class SubprocessREPL(NonIsolatedEnv):
             except json.JSONDecodeError:
                 pass
 
+            # Build debug info for failed execution
+            debug_info = f"exit_code={result.returncode}"
+            if result.stderr:
+                debug_info = result.stderr
+            elif not result.stdout:
+                debug_info = f"No output (exit_code={result.returncode})"
+
             return REPLResult(
                 stdout=result.stdout,
-                stderr=result.stderr or "Failed to parse output",
+                stderr=debug_info,
                 locals={},
                 execution_time=None,
                 rlm_calls=self._pending_llm_calls.copy(),

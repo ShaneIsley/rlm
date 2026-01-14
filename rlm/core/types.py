@@ -119,13 +119,14 @@ class RLMChatCompletion:
         )
 
 
-@dataclass
 class REPLResult:
+    """Result from REPL code execution."""
+
     stdout: str
     stderr: str
     locals: dict
-    execution_time: float
-    llm_calls: list["RLMChatCompletion"]
+    execution_time: float | None
+    rlm_calls: list["RLMChatCompletion"]
 
     def __init__(
         self,
@@ -141,8 +142,8 @@ class REPLResult:
         self.execution_time = execution_time
         self.rlm_calls = rlm_calls or []
 
-    def __str__(self):
-        return f"REPLResult(stdout={self.stdout}, stderr={self.stderr}, locals={self.locals}, execution_time={self.execution_time}, rlm_calls={len(self.rlm_calls)})"
+    def __repr__(self):
+        return f"REPLResult(stdout={self.stdout!r}, stderr={self.stderr!r}, locals={self.locals}, execution_time={self.execution_time}, rlm_calls={len(self.rlm_calls)})"
 
     def to_dict(self):
         return {
