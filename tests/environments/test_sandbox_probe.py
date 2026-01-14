@@ -2,6 +2,7 @@
 
 import os
 import platform
+
 import pytest
 
 from rlm.environments import SubprocessREPL

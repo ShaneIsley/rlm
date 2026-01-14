@@ -6,13 +6,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rlm.clients import get_client, get_required_env_vars, get_supported_backends
-from rlm.core.exceptions import UnknownBackendError, UnknownEnvironmentError, ValidationError
 from rlm.clients.registry import (
     CLIENT_REGISTRY,
     ClientConfig,
     create_client,
     load_client_class,
 )
+from rlm.core.exceptions import UnknownBackendError, UnknownEnvironmentError, ValidationError
 from rlm.environments import get_environment, get_supported_environments
 from rlm.environments.registry import (
     ENVIRONMENT_REGISTRY,

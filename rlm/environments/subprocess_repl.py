@@ -27,13 +27,14 @@ import tempfile
 import textwrap
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from rlm.core.comms_utils import LMRequest, send_lm_request, send_lm_request_batched
 from rlm.core.exceptions import ConfigurationError
 from rlm.core.types import REPLResult, RLMChatCompletion
-from rlm.environments.base_env import NonIsolatedEnv, SupportsPersistence
+from rlm.environments.base_env import NonIsolatedEnv
 
 # =============================================================================
 # Global Cleanup Registry
@@ -395,7 +396,7 @@ class SubprocessREPL(NonIsolatedEnv):
                     conn.sendall(json.dumps(response).encode() + b"\n")
 
                 conn.close()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception:
                 continue
