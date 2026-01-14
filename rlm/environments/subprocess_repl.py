@@ -510,23 +510,61 @@ class SubprocessREPL(NonIsolatedEnv):
         if not os.path.exists("/usr/bin/sandbox-exec"):
             return cmd
 
+        # Get both symlink and real paths (macOS needs both for /var/folders)
+        real_temp_dir = os.path.realpath(self.temp_dir)
+        real_venv_path = os.path.realpath(self.venv_path)
+        temp_dir = self.temp_dir
+        venv_path = self.venv_path
+        home_dir = os.path.expanduser("~")
+        real_home_dir = os.path.realpath(home_dir)
+
+        # Find the actual Python interpreter location (may be in ~/.local/share/uv/)
+        python_path = os.path.join(self.venv_path, "bin", "python")
+        real_python = os.path.realpath(python_path)
+        python_install_dir = os.path.dirname(os.path.dirname(real_python))
+
+        # Hybrid approach: allow default then deny specific sensitive paths
+        # This ensures Python can run while blocking access to sensitive data
         profile = f"""
 (version 1)
-(deny default)
-(allow process-fork process-exec)
-(allow file-read* (subpath "/usr"))
-(allow file-read* (subpath "/Library"))
-(allow file-read* (subpath "/System"))
-(allow file-read* (subpath "/private/var"))
-(allow file-read* (subpath "/dev"))
-(allow file-read* (subpath "/bin"))
-(allow file-read* (subpath "/sbin"))
-(allow file-read* (subpath "{self.venv_path}"))
-(allow file-read* file-write* (subpath "{self.temp_dir}"))
-(allow file-read* file-write* (literal "{self.socket_path}"))
-(allow sysctl-read)
-(allow mach-lookup)
-(deny network*)
+
+;; Start with permissive defaults (needed for Python/dyld)
+(allow default)
+
+;; ============ NETWORK ============
+;; Block all external network access
+(deny network-outbound (remote ip))
+
+;; ============ FILE WRITES ============
+;; Block ALL writes first
+(deny file-write*)
+
+;; Allow writes ONLY to our temp directory
+(allow file-write* (subpath "{real_temp_dir}"))
+(allow file-write* (subpath "{temp_dir}"))
+
+;; ============ FILE READS ============
+;; Block reads to sensitive directories
+(deny file-read* (subpath "{real_home_dir}"))
+(deny file-read* (subpath "{home_dir}"))
+(deny file-read* (subpath "/Users"))
+(deny file-read* (subpath "/home"))
+(deny file-read* (subpath "/etc"))
+(deny file-read* (subpath "/private/etc"))
+
+;; Allow specific /etc files needed for SSL/DNS
+(allow file-read* (literal "/etc/ssl/cert.pem"))
+(allow file-read* (literal "/etc/ssl/certs"))
+(allow file-read* (literal "/etc/resolv.conf"))
+(allow file-read* (literal "/private/etc/ssl/cert.pem"))
+(allow file-read* (literal "/private/etc/resolv.conf"))
+
+;; Allow our specific paths (overrides the denies above)
+(allow file-read* (subpath "{real_temp_dir}"))
+(allow file-read* (subpath "{temp_dir}"))
+(allow file-read* (subpath "{real_venv_path}"))
+(allow file-read* (subpath "{venv_path}"))
+(allow file-read* (subpath "{python_install_dir}"))
 """
         profile_path = os.path.join(self.temp_dir, "sandbox.sb")
         with open(profile_path, "w") as f:
@@ -597,13 +635,15 @@ class SubprocessREPL(NonIsolatedEnv):
 
         cmd = self._get_sandbox_command([python_path, "-c", script])
 
-        env = {
-            "PATH": os.path.join(self.venv_path, "bin"),
+        # Build environment - inherit essential vars for macOS compatibility
+        env = os.environ.copy()
+        env.update({
+            "PATH": os.path.join(self.venv_path, "bin") + ":/usr/bin:/bin",
             "HOME": self.temp_dir,
             "TMPDIR": self.temp_dir,
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONNOUSERSITE": "1",
-        }
+        })
 
         try:
             result = subprocess.run(
@@ -618,7 +658,7 @@ class SubprocessREPL(NonIsolatedEnv):
             # Parse JSON output
             try:
                 lines = result.stdout.strip().split("\n")
-                if lines:
+                if lines and lines[-1]:
                     data = json.loads(lines[-1])
                     return REPLResult(
                         stdout=data.get("stdout", ""),
@@ -630,9 +670,16 @@ class SubprocessREPL(NonIsolatedEnv):
             except json.JSONDecodeError:
                 pass
 
+            # Build debug info for failed execution
+            debug_info = f"exit_code={result.returncode}"
+            if result.stderr:
+                debug_info = result.stderr
+            elif not result.stdout:
+                debug_info = f"No output (exit_code={result.returncode})"
+
             return REPLResult(
                 stdout=result.stdout,
-                stderr=result.stderr or "Failed to parse output",
+                stderr=debug_info,
                 locals={},
                 execution_time=None,
                 rlm_calls=self._pending_llm_calls.copy(),
