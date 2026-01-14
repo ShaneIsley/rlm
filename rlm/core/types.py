@@ -14,6 +14,7 @@ ClientBackend = Literal[
     "anthropic",
     "azure_openai",
     "gemini",
+    "huggingface",
 ]
 EnvironmentType = Literal["local", "subprocess", "docker", "modal", "prime"]
 
