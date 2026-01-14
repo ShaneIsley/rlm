@@ -513,45 +513,38 @@ class SubprocessREPL(NonIsolatedEnv):
         # Resolve symlinks (e.g., /var/folders -> /private/var/folders)
         real_temp_dir = os.path.realpath(self.temp_dir)
         real_venv_path = os.path.realpath(self.venv_path)
+        home_dir = os.path.expanduser("~")
+        real_home_dir = os.path.realpath(home_dir)
 
+        # Use a permissive base and deny specific operations
+        # This approach works better with Python's runtime requirements
         profile = f"""
 (version 1)
-(deny default)
 
-;; Allow process execution
-(allow process-fork process-exec)
-(allow process-exec* (subpath "{real_venv_path}"))
+;; Start permissive, then restrict
+(allow default)
 
-;; System directories (read-only)
-(allow file-read* (subpath "/usr"))
-(allow file-read* (subpath "/Library"))
-(allow file-read* (subpath "/System"))
-(allow file-read* (subpath "/private/var"))
-(allow file-read* (subpath "/var"))
-(allow file-read* (subpath "/dev"))
-(allow file-read* (subpath "/bin"))
-(allow file-read* (subpath "/sbin"))
-(allow file-read* (subpath "/etc"))
-(allow file-read* (subpath "/Applications"))
-(allow file-read* (subpath "/opt"))
-
-;; Allow reading the venv (may be outside temp_dir on some systems)
-(allow file-read* (subpath "{real_venv_path}"))
-
-;; Allow read/write in temp directory
-(allow file-read* file-write* (subpath "{real_temp_dir}"))
-
-;; Socket communication
-(allow file-read* file-write* (literal "{self.socket_path}"))
-(allow network-bind network-inbound (local unix-socket))
-
-;; System calls
-(allow sysctl-read)
-(allow mach-lookup)
-
-;; Block external network
+;; DENY: External network access (TCP/UDP to remote hosts)
 (deny network-outbound (remote ip))
-(deny network* (remote ip))
+
+;; DENY: Writing outside allowed directories
+(deny file-write*
+    (subpath "/Users")
+    (subpath "/home")
+    (subpath "{real_home_dir}")
+)
+
+;; ALLOW: Write to our temp directory (override the deny above)
+(allow file-write* (subpath "{real_temp_dir}"))
+
+;; DENY: Reading user's home directory (privacy)
+(deny file-read*
+    (subpath "{real_home_dir}")
+)
+
+;; ALLOW: Read from our temp and venv (override deny above if venv is in home)
+(allow file-read* (subpath "{real_temp_dir}"))
+(allow file-read* (subpath "{real_venv_path}"))
 """
         profile_path = os.path.join(self.temp_dir, "sandbox.sb")
         with open(profile_path, "w") as f:
