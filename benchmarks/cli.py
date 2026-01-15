@@ -3,9 +3,16 @@
 CLI for running RLM benchmarks.
 
 Usage:
-    python -m benchmarks.cli --benchmark oolong --subset toy_dnd --num-samples 10
-    python -m benchmarks.cli --benchmark niah --context-length 100000 --methods rlm direct
-    python -m benchmarks.cli --benchmark all --num-samples 5 --output results.json
+    # Run benchmarks
+    python -m benchmarks.cli run --benchmark oolong --num-samples 10
+    python -m benchmarks.cli run --benchmark niah --methods rlm direct
+
+    # Query stored results
+    python -m benchmarks.cli history --benchmark oolong-toy_dnd --limit 10
+    python -m benchmarks.cli compare --benchmark niah-100k --group-by method
+
+    # Legacy (no subcommand defaults to 'run')
+    python -m benchmarks.cli --benchmark oolong --num-samples 10
 """
 
 import argparse
@@ -14,6 +21,7 @@ import sys
 from datetime import datetime
 
 from benchmarks.base import BenchmarkResult
+from benchmarks.results import ExperimentConfig, ResultsStore
 from benchmarks.runner import BenchmarkRunner, compare_methods
 from benchmarks.tasks.browsecomp import BrowseCompPlusBenchmark
 from benchmarks.tasks.niah import NIAHBenchmark
@@ -116,25 +124,124 @@ def print_summary(results: dict[str, BenchmarkResult]):
     print("=" * 70)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run RLM benchmarks",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Run OOLONG benchmark with RLM
-  python -m benchmarks.cli --benchmark oolong --num-samples 10
-
-  # Compare RLM vs direct LLM on NIAH
-  python -m benchmarks.cli --benchmark niah --methods rlm direct --num-samples 20
-
-  # Run all benchmarks and save results
-  python -m benchmarks.cli --benchmark all --output results.json
-        """,
+def cmd_history(args: argparse.Namespace) -> int:
+    """Show historical results for a benchmark."""
+    store = ResultsStore(args.results_dir)
+    records = store.get_history(
+        benchmark=args.benchmark,
+        model=args.model,
+        method=args.method,
+        limit=args.limit,
     )
 
-    # Benchmark selection
+    if not records:
+        print(f"No results found for benchmark: {args.benchmark}")
+        return 1
+
+    print(f"\nHistory for {args.benchmark} ({len(records)} results)")
+    print("=" * 80)
+
+    headers = ["Timestamp", "Model", "Method", "Accuracy", "F1", "Tokens"]
+    col_widths = [20, 20, 10, 10, 8, 10]
+    header_line = " | ".join(h.ljust(w) for h, w in zip(headers, col_widths, strict=True))
+    print(header_line)
+    print("-" * len(header_line))
+
+    for r in records:
+        row = [
+            r.timestamp[:19],
+            r.config.model[:20],
+            r.config.method[:10],
+            f"{r.accuracy:.1%}",
+            f"{r.mean_f1:.3f}",
+            str(r.total_tokens),
+        ]
+        print(" | ".join(v.ljust(w) for v, w in zip(row, col_widths, strict=True)))
+
+    return 0
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    """Compare results grouped by a dimension."""
+    store = ResultsStore(args.results_dir)
+    comparison = store.compare(
+        benchmark=args.benchmark,
+        group_by=args.group_by,
+        filter_model=args.model,
+    )
+
+    if not comparison:
+        print(f"No results found for benchmark: {args.benchmark}")
+        return 1
+
+    print(f"\nComparison for {args.benchmark} (grouped by {args.group_by})")
+    print("=" * 70)
+
+    headers = ["Group", "Count", "Accuracy", "Max Acc", "F1", "Tokens"]
+    col_widths = [15, 8, 10, 10, 8, 12]
+    header_line = " | ".join(h.ljust(w) for h, w in zip(headers, col_widths, strict=True))
+    print(header_line)
+    print("-" * len(header_line))
+
+    for group, metrics in sorted(comparison.items()):
+        row = [
+            group[:15],
+            str(metrics["count"]),
+            f"{metrics['mean_accuracy']:.1%}",
+            f"{metrics['max_accuracy']:.1%}",
+            f"{metrics['mean_f1']:.3f}",
+            f"{metrics['mean_tokens']:.0f}",
+        ]
+        print(" | ".join(v.ljust(w) for v, w in zip(row, col_widths, strict=True)))
+
+    return 0
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    """List available benchmarks and summary."""
+    store = ResultsStore(args.results_dir)
+    summary = store.summary()
+
+    print("\nBenchmark Results Summary")
+    print("=" * 50)
+    print(f"Results directory: {summary['results_dir']}")
+    print(f"Total experiments: {summary['total_experiments']}")
+    print("\nBenchmarks:")
+
+    for name, count in summary["benchmarks"].items():
+        print(f"  - {name}: {count} runs")
+
+    return 0
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    """Export results to CSV."""
+    store = ResultsStore(args.results_dir)
+    store.export_csv(args.benchmark, args.output)
+    print(f"Exported {args.benchmark} results to {args.output}")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="RLM Benchmarks CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # Global options
     parser.add_argument(
+        "--results-dir",
+        type=str,
+        default="./benchmark_results",
+        help="Directory for storing results (default: ./benchmark_results)",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # ========== RUN subcommand ==========
+    run_parser = subparsers.add_parser("run", help="Run benchmarks")
+
+    run_parser.add_argument(
         "--benchmark",
         "-b",
         type=str,
@@ -142,23 +249,21 @@ Examples:
         choices=["niah", "oolong", "oolong-pairs", "browsecomp", "all"],
         help="Benchmark to run",
     )
-
-    # Common options
-    parser.add_argument(
+    run_parser.add_argument(
         "--num-samples",
         "-n",
         type=int,
         default=10,
         help="Number of samples to evaluate (default: 10)",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--seed",
         "-s",
         type=int,
         default=None,
         help="Random seed for reproducibility",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--methods",
         "-m",
         nargs="+",
@@ -166,99 +271,110 @@ Examples:
         choices=["rlm", "direct", "summarize"],
         help="Inference methods to compare (default: rlm)",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--output",
         "-o",
         type=str,
         default=None,
         help="Output file path for results (JSON)",
     )
-
-    # Model configuration
-    parser.add_argument(
+    run_parser.add_argument(
         "--backend",
         type=str,
         default="openai",
         help="LLM backend (default: openai)",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--model",
         type=str,
         default="gpt-5-mini",
         help="Model name (default: gpt-5-mini)",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--environment",
         type=str,
         default="subprocess",
         help="REPL environment (default: subprocess)",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--max-iterations",
         type=int,
         default=30,
         help="Max RLM iterations (default: 30)",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
         help="Enable verbose output",
     )
-    parser.add_argument(
-        "--log-dir",
-        type=str,
-        default=None,
-        help="Directory for trajectory logs",
-    )
+    run_parser.add_argument("--log-dir", type=str, default=None, help="Trajectory logs directory")
 
-    # Benchmark-specific options
-    parser.add_argument(
-        "--context-length",
-        type=int,
-        default=100_000,
-        help="NIAH: context length in chars (default: 100000)",
-    )
-    parser.add_argument(
-        "--needle-depth",
-        type=float,
-        default=None,
-        help="NIAH: needle position 0.0-1.0 (default: random)",
-    )
-    parser.add_argument(
-        "--subset",
+    # Benchmark-specific options for run
+    run_parser.add_argument("--context-length", type=int, default=100_000, help="NIAH context len")
+    run_parser.add_argument("--needle-depth", type=float, default=None, help="NIAH needle position")
+    run_parser.add_argument("--subset", type=str, default="toy_dnd", help="OOLONG subset")
+    run_parser.add_argument("--num-items", type=int, default=50, help="OOLONG-Pairs items")
+    run_parser.add_argument("--num-pairs", type=int, default=25, help="OOLONG-Pairs pairs")
+    run_parser.add_argument("--num-documents", type=int, default=100, help="BrowseComp docs")
+    run_parser.add_argument("--num-hops", type=int, default=2, help="BrowseComp hops")
+
+    # ========== HISTORY subcommand ==========
+    history_parser = subparsers.add_parser("history", help="Show historical results")
+    history_parser.add_argument("--benchmark", "-b", type=str, required=True, help="Benchmark name")
+    history_parser.add_argument("--model", type=str, default=None, help="Filter by model")
+    history_parser.add_argument("--method", type=str, default=None, help="Filter by method")
+    history_parser.add_argument("--limit", type=int, default=20, help="Max results to show")
+
+    # ========== COMPARE subcommand ==========
+    compare_parser = subparsers.add_parser("compare", help="Compare results")
+    compare_parser.add_argument("--benchmark", "-b", type=str, required=True, help="Benchmark name")
+    compare_parser.add_argument(
+        "--group-by",
         type=str,
-        default="toy_dnd",
-        help="OOLONG: dataset subset (default: toy_dnd)",
+        default="method",
+        choices=["method", "model", "environment"],
+        help="Group by dimension",
     )
-    parser.add_argument(
-        "--num-items",
-        type=int,
-        default=50,
-        help="OOLONG-Pairs: number of items (default: 50)",
-    )
-    parser.add_argument(
-        "--num-pairs",
-        type=int,
-        default=25,
-        help="OOLONG-Pairs: number of pairs (default: 25)",
-    )
-    parser.add_argument(
-        "--num-documents",
-        type=int,
-        default=100,
-        help="BrowseComp: number of documents (default: 100)",
-    )
-    parser.add_argument(
-        "--num-hops",
-        type=int,
-        default=2,
-        help="BrowseComp: reasoning hops (default: 2)",
-    )
+    compare_parser.add_argument("--model", type=str, default=None, help="Filter by model")
+
+    # ========== LIST subcommand ==========
+    subparsers.add_parser("list", help="List benchmarks and summary")
+
+    # ========== EXPORT subcommand ==========
+    export_parser = subparsers.add_parser("export", help="Export results to CSV")
+    export_parser.add_argument("--benchmark", "-b", type=str, required=True, help="Benchmark name")
+    export_parser.add_argument("--output", "-o", type=str, required=True, help="Output CSV path")
 
     args = parser.parse_args()
 
-    # Create runner
+    # Handle legacy usage (no subcommand)
+    if args.command is None:
+        # Check if --benchmark was passed (legacy mode)
+        if hasattr(args, "benchmark") and args.benchmark:
+            args.command = "run"
+        else:
+            parser.print_help()
+            return 1
+
+    # Dispatch to appropriate command
+    if args.command == "run":
+        return cmd_run(args)
+    elif args.command == "history":
+        return cmd_history(args)
+    elif args.command == "compare":
+        return cmd_compare(args)
+    elif args.command == "list":
+        return cmd_list(args)
+    elif args.command == "export":
+        return cmd_export(args)
+    else:
+        parser.print_help()
+        return 1
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    """Run benchmarks (main command)."""
     runner = BenchmarkRunner(
         backend=args.backend,
         model=args.model,
@@ -268,13 +384,11 @@ Examples:
         log_dir=args.log_dir,
     )
 
-    # Get benchmarks
     if args.benchmark == "all":
         benchmarks = get_all_benchmarks(args)
     else:
         benchmarks = [get_benchmark(args)]
 
-    # Run benchmarks
     all_results = {}
 
     for benchmark in benchmarks:
@@ -298,7 +412,21 @@ Examples:
     # Print summary
     print_summary(all_results)
 
-    # Save results if output specified
+    # Save to results store
+    store = ResultsStore(args.results_dir)
+    config = ExperimentConfig(
+        backend=args.backend,
+        model=args.model,
+        environment=args.environment,
+        max_iterations=args.max_iterations,
+        num_samples=args.num_samples,
+        seed=args.seed,
+    )
+
+    for key, result in all_results.items():
+        exp_id = store.save(result, config)
+        print(f"Saved {key} as experiment {exp_id}")
+
     if args.output:
         save_results(all_results, args.output)
 
