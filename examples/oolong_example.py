@@ -3,8 +3,8 @@ Example: An example from the Oolong Benchmark from the RLM paper: https://arxiv.
 """
 
 import os
+import random
 import sys
-from itertools import islice
 
 from dotenv import load_dotenv
 
@@ -22,11 +22,10 @@ except ImportError:
     sys.exit(1)
 
 
-def load_oolong_row(index: int = 1) -> dict:
-    """Load a single row from the Oolong benchmark."""
-    streaming_ds = load_dataset("oolongbench/oolong-real", "toy_dnd", split="test", streaming=True)
-    row = next(islice(streaming_ds, index, index + 1))
-    return row
+def load_oolong_dataset():
+    """Load the Oolong benchmark dataset."""
+    ds = load_dataset("oolongbench/oolong-real", "toy_dnd", split="test", streaming=False)
+    return ds
 
 
 def main():
@@ -35,7 +34,11 @@ def main():
         raise ValueError("OPENAI_API_KEY environment variable is not set.")
 
     # Load benchmark data
-    row = load_oolong_row(index=1)
+    ds = load_oolong_dataset()
+    dataset_size = len(ds)
+    random_index = random.randint(0, dataset_size - 1)
+    row = ds[random_index]
+    print(f"Loading random row {random_index} from dataset (total: {dataset_size} rows)")
     context = row["context_window_text"]
     question = row["question"]
     expected_answer = row["answer"]
@@ -54,7 +57,7 @@ def main():
             "model_name": "gpt-5-mini",
             "api_key": api_key,
         },
-        environment="local",
+        environment="subprocess",
         max_iterations=30,
         logger=logger,
         verbose=True,
