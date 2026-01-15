@@ -3,6 +3,7 @@ Example: An example from the Oolong Benchmark from the RLM paper: https://arxiv.
 """
 
 import os
+import random
 import sys
 from itertools import islice
 
@@ -35,7 +36,9 @@ def main():
         raise ValueError("OPENAI_API_KEY environment variable is not set.")
 
     # Load benchmark data
-    row = load_oolong_row(index=1)
+    random_index = random.randint(0, 100)
+    row = load_oolong_row(index=random_index)
+    print(f"Loading random row {random_index} from dataset")
     context = row["context_window_text"]
     question = row["question"]
     expected_answer = row["answer"]
@@ -54,7 +57,7 @@ def main():
             "model_name": "gpt-5-mini",
             "api_key": api_key,
         },
-        environment="local",
+        environment="subprocess",
         max_iterations=30,
         logger=logger,
         verbose=True,
