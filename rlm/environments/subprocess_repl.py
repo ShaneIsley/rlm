@@ -298,9 +298,22 @@ class SubprocessREPL(NonIsolatedEnv):
 
         # Pre-approved packages (stdlib + user-specified)
         self.allowed_packages: set[str] = {
-            "json", "re", "math", "collections", "itertools",
-            "functools", "datetime", "random", "string", "typing",
-            "os", "sys", "io", "time", "pathlib", "copy",
+            "json",
+            "re",
+            "math",
+            "collections",
+            "itertools",
+            "functools",
+            "datetime",
+            "random",
+            "string",
+            "typing",
+            "os",
+            "sys",
+            "io",
+            "time",
+            "pathlib",
+            "copy",
         }
         if allowed_packages:
             self.allowed_packages.update(allowed_packages)
@@ -472,10 +485,12 @@ class SubprocessREPL(NonIsolatedEnv):
             capture_output=True,
         )
         self._installed_packages.add(package)
-        self._overhead_stats["package_installs"].append({
-            "package": package,
-            "time_ms": (time.perf_counter() - start) * 1000,
-        })
+        self._overhead_stats["package_installs"].append(
+            {
+                "package": package,
+                "time_ms": (time.perf_counter() - start) * 1000,
+            }
+        )
 
     def _extract_missing_module(self, stderr: str) -> str | None:
         """Extract module name from ImportError/ModuleNotFoundError."""
@@ -580,24 +595,38 @@ class SubprocessREPL(NonIsolatedEnv):
 
         bwrap_cmd = [
             "bwrap",
-            "--ro-bind", "/usr", "/usr",
-            "--ro-bind", "/lib", "/lib",
-            "--ro-bind", "/bin", "/bin",
-            "--ro-bind", "/sbin", "/sbin",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--ro-bind",
+            "/lib",
+            "/lib",
+            "--ro-bind",
+            "/bin",
+            "/bin",
+            "--ro-bind",
+            "/sbin",
+            "/sbin",
         ]
 
         # Add /lib64 if it exists
         if os.path.exists("/lib64"):
             bwrap_cmd.extend(["--ro-bind", "/lib64", "/lib64"])
 
-        bwrap_cmd.extend([
-            "--ro-bind", self.venv_path, self.venv_path,
-            "--bind", self.temp_dir, self.temp_dir,
-            "--unshare-net",
-            "--unshare-pid",
-            "--die-with-parent",
-            "--",
-        ])
+        bwrap_cmd.extend(
+            [
+                "--ro-bind",
+                self.venv_path,
+                self.venv_path,
+                "--bind",
+                self.temp_dir,
+                self.temp_dir,
+                "--unshare-net",
+                "--unshare-pid",
+                "--die-with-parent",
+                "--",
+            ]
+        )
 
         return bwrap_cmd + cmd
 
@@ -621,11 +650,13 @@ class SubprocessREPL(NonIsolatedEnv):
         total_time = time.perf_counter() - total_start
 
         # Track overhead
-        self._overhead_stats["executions"].append({
-            "total_ms": total_time * 1000,
-            "code_ms": (result.execution_time or 0) * 1000,
-            "overhead_ms": (total_time - (result.execution_time or 0)) * 1000,
-        })
+        self._overhead_stats["executions"].append(
+            {
+                "total_ms": total_time * 1000,
+                "code_ms": (result.execution_time or 0) * 1000,
+                "overhead_ms": (total_time - (result.execution_time or 0)) * 1000,
+            }
+        )
 
         return result
 
@@ -638,13 +669,15 @@ class SubprocessREPL(NonIsolatedEnv):
 
         # Build environment - inherit essential vars for macOS compatibility
         env = os.environ.copy()
-        env.update({
-            "PATH": os.path.join(self.venv_path, "bin") + ":/usr/bin:/bin",
-            "HOME": self.temp_dir,
-            "TMPDIR": self.temp_dir,
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONNOUSERSITE": "1",
-        })
+        env.update(
+            {
+                "PATH": os.path.join(self.venv_path, "bin") + ":/usr/bin:/bin",
+                "HOME": self.temp_dir,
+                "TMPDIR": self.temp_dir,
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONNOUSERSITE": "1",
+            }
+        )
 
         try:
             result = subprocess.run(
@@ -720,9 +753,7 @@ class SubprocessREPL(NonIsolatedEnv):
             context_path = os.path.join(self.temp_dir, f"context_{context_index}.txt")
             with open(context_path, "w") as f:
                 f.write(context_payload)
-            self.execute_code(
-                f"with open(r'{context_path}', 'r') as f:\n    {var_name} = f.read()"
-            )
+            self.execute_code(f"with open(r'{context_path}', 'r') as f:\n    {var_name} = f.read()")
         else:
             context_path = os.path.join(self.temp_dir, f"context_{context_index}.json")
             with open(context_path, "w") as f:
@@ -798,7 +829,9 @@ class SubprocessREPL(NonIsolatedEnv):
             "packages_installed": [i["package"] for i in installs],
             "overhead_percentage": round(
                 (total_overhead / (total_overhead + total_code_time)) * 100, 1
-            ) if total_code_time > 0 else 0,
+            )
+            if total_code_time > 0
+            else 0,
         }
 
     def print_overhead_summary(self):

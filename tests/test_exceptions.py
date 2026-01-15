@@ -58,7 +58,9 @@ class TestExceptionHierarchy:
             InvalidPromptError,
         ]
         for exc_cls in client_exceptions:
-            assert issubclass(exc_cls, ClientError), f"{exc_cls.__name__} should inherit from ClientError"
+            assert issubclass(exc_cls, ClientError), (
+                f"{exc_cls.__name__} should inherit from ClientError"
+            )
 
     def test_environment_errors_inherit_from_environment_error(self):
         """Environment-related exceptions should inherit from EnvironmentError."""
@@ -69,7 +71,9 @@ class TestExceptionHierarchy:
             LMQueryError,
         ]
         for exc_cls in env_exceptions:
-            assert issubclass(exc_cls, EnvironmentError), f"{exc_cls.__name__} should inherit from EnvironmentError"
+            assert issubclass(exc_cls, EnvironmentError), (
+                f"{exc_cls.__name__} should inherit from EnvironmentError"
+            )
 
     def test_registry_errors_inherit_from_registry_error(self):
         """Registry-related exceptions should inherit from RegistryError."""
@@ -79,7 +83,9 @@ class TestExceptionHierarchy:
             ValidationError,
         ]
         for exc_cls in registry_exceptions:
-            assert issubclass(exc_cls, RegistryError), f"{exc_cls.__name__} should inherit from RegistryError"
+            assert issubclass(exc_cls, RegistryError), (
+                f"{exc_cls.__name__} should inherit from RegistryError"
+            )
 
 
 class TestClientExceptions:
@@ -110,7 +116,9 @@ class TestClientExceptions:
 
     def test_api_error_with_status_code(self):
         """APIError should store status code and response body."""
-        exc = APIError("Rate limit exceeded", status_code=429, response_body={"error": "too many requests"})
+        exc = APIError(
+            "Rate limit exceeded", status_code=429, response_body={"error": "too many requests"}
+        )
         assert "Rate limit exceeded" in str(exc)
         assert exc.status_code == 429
         assert exc.response_body == {"error": "too many requests"}
@@ -127,7 +135,9 @@ class TestEnvironmentExceptions:
 
     def test_code_execution_error_with_details(self):
         """CodeExecutionError should store code and stderr."""
-        exc = CodeExecutionError("Syntax error", code="print(", stderr="SyntaxError: unexpected EOF")
+        exc = CodeExecutionError(
+            "Syntax error", code="print(", stderr="SyntaxError: unexpected EOF"
+        )
         assert "Syntax error" in str(exc)
         assert exc.code == "print("
         assert exc.stderr == "SyntaxError: unexpected EOF"
