@@ -2,6 +2,7 @@
 Example: An example from the Oolong Benchmark from the RLM paper: https://arxiv.org/abs/2512.24601v1
 """
 
+import argparse
 import random
 import sys
 
@@ -30,6 +31,24 @@ def load_random_oolong_row() -> dict:
 
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Run Oolong benchmark example with RLM"
+    )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="openai",
+        help="Backend to use (e.g., openai, anthropic)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="gpt-5-mini",
+        help="Model name to use",
+    )
+    args = parser.parse_args()
+
     # Load benchmark data
     print("Loading random row from dataset using shuffle...")
     row = load_random_oolong_row()
@@ -45,11 +64,12 @@ def main():
     logger = RLMLogger(log_dir="./logs")
 
     # Create RLM instance
-    # Note: API key is automatically loaded from OPENAI_API_KEY environment variable
+    # Note: API key is automatically loaded from environment variable
+    print(f"Using backend: {args.backend}, model: {args.model}")
     rlm = RLM(
-        backend="openai",
+        backend=args.backend,
         backend_kwargs={
-            "model_name": "gpt-5-mini",
+            "model_name": args.model,
         },
         environment="subprocess",
         max_iterations=30,
