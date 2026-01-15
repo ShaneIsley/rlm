@@ -84,6 +84,7 @@ def main():
     print(f"Question: {question}")
     print(f"Expected: {expected_answer}")
     print(f"RLM Response: {result.response}")
+    print("-" * 50)
 
     # Simple validation (exact match or contained)
     is_correct = (
