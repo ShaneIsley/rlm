@@ -299,7 +299,9 @@ class TestParallelExecution:
         )
 
         # All samples should be correct (temp files weren't clobbered)
-        assert result.accuracy == 1.0, f"Some samples were clobbered: {[sr for sr in result.sample_results if not sr.is_correct]}"
+        assert result.accuracy == 1.0, (
+            f"Some samples were clobbered: {[sr for sr in result.sample_results if not sr.is_correct]}"
+        )
 
         # Verify multiple threads were used
         unique_threads = set(thread_ids.values())
@@ -398,11 +400,13 @@ class TestProgressTracking:
         callback_invocations = []
 
         def track_callback(completed, total, sample_result, stats):
-            callback_invocations.append({
-                "completed": completed,
-                "total": total,
-                "accuracy": stats.accuracy,
-            })
+            callback_invocations.append(
+                {
+                    "completed": completed,
+                    "total": total,
+                    "accuracy": stats.accuracy,
+                }
+            )
 
         benchmark = NIAHBenchmark(context_length=1000)
         runner = BenchmarkRunner(
@@ -410,7 +414,7 @@ class TestProgressTracking:
             progress_callback=track_callback,
         )
 
-        result = runner.run(
+        runner.run(
             benchmark,
             method="custom",
             custom_fn=lambda s: s.expected_answer,
