@@ -316,6 +316,15 @@ def main():
         default=1,
         help="Parallel workers (1=sequential, >1=parallel threads, default: 1)",
     )
+    run_parser.add_argument(
+        "--progress",
+        "-p",
+        type=str,
+        default="auto",
+        choices=["auto", "tqdm", "simple", "none"],
+        help="Progress display mode: auto (uses tqdm if available), tqdm (progress bar), "
+        "simple (periodic status), none (quiet). Default: auto",
+    )
 
     # Benchmark-specific options for run
     run_parser.add_argument("--context-length", type=int, default=100_000, help="NIAH context len")
@@ -390,6 +399,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         verbose=args.verbose,
         log_dir=args.log_dir,
         max_workers=args.max_workers,
+        progress=args.progress,
     )
 
     if args.benchmark == "all":
