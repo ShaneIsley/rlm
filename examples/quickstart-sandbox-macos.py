@@ -16,8 +16,6 @@ Usage:
     OPENAI_API_KEY=... python examples/quickstart-sandbox-macos.py
 """
 
-import os
-
 from dotenv import load_dotenv
 
 from rlm import RLM
@@ -27,11 +25,11 @@ load_dotenv()
 
 logger = RLMLogger(log_dir="./logs")
 
+# Note: API key is automatically loaded from OPENAI_API_KEY environment variable
 rlm = RLM(
     backend="openai",
     backend_kwargs={
         "model_name": "gpt-5-nano",
-        "api_key": os.getenv("OPENAI_API_KEY"),
     },
     environment="subprocess",  # Use SubprocessREPL instead of local
     environment_kwargs={

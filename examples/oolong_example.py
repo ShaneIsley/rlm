@@ -2,7 +2,6 @@
 Example: An example from the Oolong Benchmark from the RLM paper: https://arxiv.org/abs/2512.24601v1
 """
 
-import os
 import random
 import sys
 
@@ -31,10 +30,6 @@ def load_random_oolong_row() -> dict:
 
 
 def main():
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set.")
-
     # Load benchmark data
     print("Loading random row from dataset using shuffle...")
     row = load_random_oolong_row()
@@ -50,11 +45,11 @@ def main():
     logger = RLMLogger(log_dir="./logs")
 
     # Create RLM instance
+    # Note: API key is automatically loaded from OPENAI_API_KEY environment variable
     rlm = RLM(
         backend="openai",
         backend_kwargs={
             "model_name": "gpt-5-mini",
-            "api_key": api_key,
         },
         environment="subprocess",
         max_iterations=30,
