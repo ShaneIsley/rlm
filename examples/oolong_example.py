@@ -32,9 +32,7 @@ def load_random_oolong_row() -> dict:
 
 def main():
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(
-        description="Run Oolong benchmark example with RLM"
-    )
+    parser = argparse.ArgumentParser(description="Run Oolong benchmark example with RLM")
     parser.add_argument(
         "--backend",
         type=str,

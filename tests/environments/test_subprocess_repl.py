@@ -9,8 +9,7 @@ import pytest
 
 # Skip all tests if uv is not installed
 pytestmark = pytest.mark.skipif(
-    not shutil.which("uv"),
-    reason="uv is required for SubprocessREPL tests"
+    not shutil.which("uv"), reason="uv is required for SubprocessREPL tests"
 )
 
 

@@ -285,7 +285,15 @@ class TestEnvVarResolution:
     def test_all_backends_have_env_vars_defined(self):
         """All backends that need API keys have env_vars defined."""
         # These backends should have api_key env var
-        api_key_backends = ["openai", "openrouter", "vercel", "anthropic", "gemini", "portkey", "huggingface"]
+        api_key_backends = [
+            "openai",
+            "openrouter",
+            "vercel",
+            "anthropic",
+            "gemini",
+            "portkey",
+            "huggingface",
+        ]
         for backend in api_key_backends:
             config = CLIENT_REGISTRY[backend]
             assert "api_key" in config.env_vars, f"{backend} missing api_key env var"

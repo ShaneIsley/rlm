@@ -47,6 +47,7 @@ def demonstrate_isolation():
     print(f"Platform: {platform.system()}")
     if platform.system() == "Linux":
         import shutil
+
         if not shutil.which("bwrap"):
             print("Note: bubblewrap not installed - filesystem sandbox disabled")
     print()

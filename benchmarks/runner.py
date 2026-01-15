@@ -263,9 +263,7 @@ class BenchmarkRunner:
 
         # Call custom callback if provided
         if self.config.progress_callback:
-            self.config.progress_callback(
-                stats.completed, stats.total, sample_result, stats
-            )
+            self.config.progress_callback(stats.completed, stats.total, sample_result, stats)
 
         # Update display based on mode
         if progress_mode == "tqdm" and pbar is not None:
@@ -282,7 +280,7 @@ class BenchmarkRunner:
             if stats.completed % interval == 0 or stats.completed == stats.total:
                 print(
                     f"  Progress: {stats.completed}/{stats.total} "
-                    f"({stats.completed/stats.total:.0%}) | "
+                    f"({stats.completed / stats.total:.0%}) | "
                     f"Acc: {stats.accuracy:.1%} | "
                     f"Errors: {stats.errors} | "
                     f"ETA: {self._format_eta(stats.eta_seconds)}"
