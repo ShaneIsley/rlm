@@ -367,6 +367,85 @@ class TestParallelExecution:
             assert sr.is_correct is False
 
 
+class TestProgressTracking:
+    """Tests for progress tracking functionality."""
+
+    def test_progress_stats_calculation(self):
+        """Test ProgressStats computes metrics correctly."""
+        from benchmarks.runner import ProgressStats
+
+        stats = ProgressStats(total=100)
+        assert stats.accuracy == 0.0
+        assert stats.eta_seconds == 0.0
+
+        # Simulate some progress
+        stats.completed = 25
+        stats.correct = 20
+        stats.errors = 2
+        stats.total_time_ms = 5000.0  # 5 seconds
+
+        assert stats.accuracy == 0.8  # 20/25
+        assert stats.error_rate == 0.08  # 2/25
+        assert stats.avg_time_ms == 200.0  # 5000/25
+        # ETA: 75 remaining * 200ms / 1000 = 15 seconds
+        assert stats.eta_seconds == 15.0
+
+    def test_progress_callback_invoked(self):
+        """Test that custom progress callbacks are called."""
+        from benchmarks.runner import BenchmarkRunner
+        from benchmarks.tasks.niah import NIAHBenchmark
+
+        callback_invocations = []
+
+        def track_callback(completed, total, sample_result, stats):
+            callback_invocations.append({
+                "completed": completed,
+                "total": total,
+                "accuracy": stats.accuracy,
+            })
+
+        benchmark = NIAHBenchmark(context_length=1000)
+        runner = BenchmarkRunner(
+            progress="none",
+            progress_callback=track_callback,
+        )
+
+        result = runner.run(
+            benchmark,
+            method="custom",
+            custom_fn=lambda s: s.expected_answer,
+            num_samples=5,
+            seed=42,
+        )
+
+        assert len(callback_invocations) == 5
+        assert callback_invocations[-1]["completed"] == 5
+        assert callback_invocations[-1]["total"] == 5
+        assert callback_invocations[-1]["accuracy"] == 1.0
+
+    def test_simple_progress_mode(self, capsys):
+        """Test simple progress mode outputs status."""
+        from benchmarks.runner import BenchmarkRunner
+        from benchmarks.tasks.niah import NIAHBenchmark
+
+        benchmark = NIAHBenchmark(context_length=1000)
+        runner = BenchmarkRunner(progress="simple")
+
+        runner.run(
+            benchmark,
+            method="custom",
+            custom_fn=lambda s: s.expected_answer,
+            num_samples=10,
+            seed=42,
+        )
+
+        captured = capsys.readouterr()
+        # Simple mode should print progress at completion
+        assert "Progress:" in captured.out
+        assert "10/10" in captured.out
+        assert "Acc:" in captured.out
+
+
 class TestBenchmarkIntegration:
     """Integration tests for benchmark framework."""
 

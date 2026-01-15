@@ -20,7 +20,7 @@ Usage:
 from benchmarks.base import Benchmark, BenchmarkResult, BenchmarkSample
 from benchmarks.metrics import Metrics
 from benchmarks.results import ExperimentConfig, ExperimentRecord, ResultsStore
-from benchmarks.runner import BenchmarkRunner, compare_methods
+from benchmarks.runner import BenchmarkRunner, ProgressStats, compare_methods
 from benchmarks.tasks import (
     BrowseCompPlusBenchmark,
     NIAHBenchmark,
@@ -35,6 +35,7 @@ __all__ = [
     "BenchmarkSample",
     # Runner
     "BenchmarkRunner",
+    "ProgressStats",
     "compare_methods",
     # Metrics
     "Metrics",
