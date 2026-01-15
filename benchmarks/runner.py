@@ -7,10 +7,13 @@ Orchestrates running benchmarks with different inference methods:
 - Summarization-based
 - RAG (retrieval-augmented)
 - CodeAct (code-generation agents)
+
+Supports parallel execution for faster evaluation.
 """
 
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,6 +30,7 @@ class RunnerConfig:
     max_iterations: int = 30
     verbose: bool = False
     log_dir: str | None = None
+    max_workers: int = 1  # Number of parallel workers (1 = sequential)
     backend_kwargs: dict[str, Any] = field(default_factory=dict)
     environment_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -62,6 +66,7 @@ class BenchmarkRunner:
         max_iterations: int = 30,
         verbose: bool = False,
         log_dir: str | None = None,
+        max_workers: int = 1,
         **kwargs,
     ):
         """Initialize runner with configuration.
@@ -73,6 +78,7 @@ class BenchmarkRunner:
             max_iterations: Max iterations for RLM.
             verbose: Enable verbose output.
             log_dir: Directory for logging trajectories.
+            max_workers: Number of parallel workers (1 = sequential, >1 = parallel).
             **kwargs: Additional backend or environment kwargs.
         """
         self.config = RunnerConfig(
@@ -82,6 +88,7 @@ class BenchmarkRunner:
             max_iterations=max_iterations,
             verbose=verbose,
             log_dir=log_dir,
+            max_workers=max_workers,
             backend_kwargs={"model_name": model, **kwargs.get("backend_kwargs", {})},
             environment_kwargs=kwargs.get("environment_kwargs", {}),
         )
@@ -93,6 +100,7 @@ class BenchmarkRunner:
         num_samples: int | None = None,
         seed: int | None = None,
         custom_fn: Callable[[BenchmarkSample], str] | None = None,
+        max_workers: int | None = None,
     ) -> BenchmarkResult:
         """Run a benchmark with the specified method.
 
@@ -103,6 +111,8 @@ class BenchmarkRunner:
             seed: Random seed for reproducible sampling.
             custom_fn: Custom inference function for method="custom".
                        Takes BenchmarkSample, returns prediction string.
+            max_workers: Override default max_workers for this run.
+                         1 = sequential, >1 = parallel threads.
 
         Returns:
             BenchmarkResult with all sample results and aggregate metrics.
@@ -121,16 +131,83 @@ class BenchmarkRunner:
         )
 
         inference_fn = self._get_inference_fn(method, custom_fn)
+        workers = max_workers if max_workers is not None else self.config.max_workers
 
-        for sample in benchmark.load_samples(num_samples=num_samples, seed=seed):
-            sample_result = self._run_sample(sample, inference_fn, benchmark)
-            result.sample_results.append(sample_result)
+        # Collect samples first (needed for parallel execution)
+        samples = list(benchmark.load_samples(num_samples=num_samples, seed=seed))
 
-            if self.config.verbose:
-                status = "✓" if sample_result.is_correct else "✗"
-                print(f"  [{status}] Sample {sample.id}: {sample_result.metrics}")
+        if workers <= 1:
+            # Sequential execution
+            for sample in samples:
+                sample_result = self._run_sample(sample, inference_fn, benchmark)
+                result.sample_results.append(sample_result)
+
+                if self.config.verbose:
+                    status = "✓" if sample_result.is_correct else "✗"
+                    print(f"  [{status}] Sample {sample.id}: {sample_result.metrics}")
+        else:
+            # Parallel execution
+            result.sample_results = self._run_parallel(samples, inference_fn, benchmark, workers)
 
         return result
+
+    def _run_parallel(
+        self,
+        samples: list[BenchmarkSample],
+        inference_fn: Callable[[BenchmarkSample], tuple[str, dict[str, Any]]],
+        benchmark: Benchmark,
+        max_workers: int,
+    ) -> list[SampleResult]:
+        """Run samples in parallel using thread pool.
+
+        Args:
+            samples: List of samples to process.
+            inference_fn: Inference function to apply.
+            benchmark: Benchmark for evaluation.
+            max_workers: Number of parallel threads.
+
+        Returns:
+            List of SampleResult in original sample order.
+        """
+        results: dict[str, SampleResult] = {}
+        completed = 0
+        total = len(samples)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_sample = {
+                executor.submit(self._run_sample, sample, inference_fn, benchmark): sample
+                for sample in samples
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_sample):
+                sample = future_to_sample[future]
+                try:
+                    sample_result = future.result()
+                    results[sample.id] = sample_result
+                    completed += 1
+
+                    if self.config.verbose:
+                        status = "✓" if sample_result.is_correct else "✗"
+                        print(
+                            f"  [{status}] ({completed}/{total}) "
+                            f"Sample {sample.id}: {sample_result.metrics}"
+                        )
+                except Exception as e:
+                    # Handle unexpected errors
+                    results[sample.id] = SampleResult(
+                        sample_id=sample.id,
+                        prediction="",
+                        expected=sample.expected_answer,
+                        is_correct=False,
+                        metrics={m: 0.0 for m in benchmark.default_metrics()},
+                        error=f"Parallel execution error: {e}",
+                    )
+                    completed += 1
+
+        # Return results in original sample order
+        return [results[sample.id] for sample in samples]
 
     def _get_inference_fn(
         self,

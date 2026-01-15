@@ -309,6 +309,13 @@ def main():
         help="Enable verbose output",
     )
     run_parser.add_argument("--log-dir", type=str, default=None, help="Trajectory logs directory")
+    run_parser.add_argument(
+        "--max-workers",
+        "-w",
+        type=int,
+        default=1,
+        help="Parallel workers (1=sequential, >1=parallel threads, default: 1)",
+    )
 
     # Benchmark-specific options for run
     run_parser.add_argument("--context-length", type=int, default=100_000, help="NIAH context len")
@@ -382,6 +389,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         max_iterations=args.max_iterations,
         verbose=args.verbose,
         log_dir=args.log_dir,
+        max_workers=args.max_workers,
     )
 
     if args.benchmark == "all":
