@@ -22,10 +22,12 @@ except ImportError:
     sys.exit(1)
 
 
-def load_oolong_dataset():
-    """Load the Oolong benchmark dataset."""
-    ds = load_dataset("oolongbench/oolong-real", "toy_dnd", split="test", streaming=False)
-    return ds
+def load_random_oolong_row() -> dict:
+    """Load a random row from the Oolong benchmark using streaming with shuffle."""
+    ds = load_dataset("oolongbench/oolong-real", "toy_dnd", split="test", streaming=True)
+    shuffled_ds = ds.shuffle(seed=random.randint(0, 100000), buffer_size=1000)
+    row = next(iter(shuffled_ds))
+    return row
 
 
 def main():
@@ -34,11 +36,8 @@ def main():
         raise ValueError("OPENAI_API_KEY environment variable is not set.")
 
     # Load benchmark data
-    ds = load_oolong_dataset()
-    dataset_size = len(ds)
-    random_index = random.randint(0, dataset_size - 1)
-    row = ds[random_index]
-    print(f"Loading random row {random_index} from dataset (total: {dataset_size} rows)")
+    print("Loading random row from dataset using shuffle...")
+    row = load_random_oolong_row()
     context = row["context_window_text"]
     question = row["question"]
     expected_answer = row["answer"]
