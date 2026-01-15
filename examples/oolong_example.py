@@ -81,8 +81,9 @@ def main():
     result = rlm.completion(prompt=context, root_prompt=question)
 
     print("-" * 50)
-    print(f"RLM Response: {result.response}")
+    print(f"Question: {question}")
     print(f"Expected: {expected_answer}")
+    print(f"RLM Response: {result.response}")
 
     # Simple validation (exact match or contained)
     is_correct = (
