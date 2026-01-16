@@ -259,7 +259,7 @@ class SubprocessREPL(NonIsolatedEnv):
         allowed_packages: list[str] | None = None,
         auto_approve_packages: bool = False,
         package_approval_callback: Callable[[str], bool] | None = None,
-        verbose: bool = True,
+        verbose: bool = False,
         **kwargs,
     ):
         """
@@ -277,7 +277,7 @@ class SubprocessREPL(NonIsolatedEnv):
             allowed_packages: Pre-approved packages (no prompt needed).
             auto_approve_packages: If True, install packages without prompting.
             package_approval_callback: Custom function for package approval.
-            verbose: If True, print overhead summary on cleanup (default: True).
+            verbose: If True, print overhead summary on cleanup (default: False).
         """
         super().__init__(persistent=persistent, depth=depth, **kwargs)
 
