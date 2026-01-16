@@ -477,6 +477,93 @@ class TestModelSpec:
         assert str(spec) == "anthropic:claude-sonnet-4-20250514"
 
 
+class TestModelPropagation:
+    """Tests that model configuration is correctly passed through the system."""
+
+    def test_runner_config_model_name(self):
+        """Test that BenchmarkRunner correctly sets model_name in backend_kwargs."""
+        from benchmarks.runner import BenchmarkRunner
+
+        runner = BenchmarkRunner(
+            backend="openai",
+            model="my-test-model",
+            progress="none",
+        )
+
+        # Verify the config has the correct model_name in backend_kwargs
+        assert runner.config.backend == "openai"
+        assert runner.config.model == "my-test-model"
+        assert runner.config.backend_kwargs.get("model_name") == "my-test-model"
+
+    def test_runner_config_preserves_extra_kwargs(self):
+        """Test that extra backend_kwargs are preserved."""
+        from benchmarks.runner import BenchmarkRunner
+
+        runner = BenchmarkRunner(
+            backend="openai",
+            model="my-model",
+            progress="none",
+            backend_kwargs={"extra_param": "extra_value", "api_key": "test-key"},
+        )
+
+        # model_name from model param should be present
+        assert runner.config.backend_kwargs.get("model_name") == "my-model"
+        # Extra kwargs should be preserved
+        assert runner.config.backend_kwargs.get("extra_param") == "extra_value"
+        assert runner.config.backend_kwargs.get("api_key") == "test-key"
+
+    def test_model_spec_to_runner(self):
+        """Test end-to-end from model spec parsing to runner config."""
+        from benchmarks.cli import parse_model_spec
+        from benchmarks.runner import BenchmarkRunner
+
+        spec = parse_model_spec("anthropic:claude-3-opus")
+        runner = BenchmarkRunner(
+            backend=spec.backend,
+            model=spec.model,
+            progress="none",
+        )
+
+        assert runner.config.backend == "anthropic"
+        assert runner.config.model == "claude-3-opus"
+        assert runner.config.backend_kwargs.get("model_name") == "claude-3-opus"
+
+    def test_rlm_receives_correct_config(self):
+        """Test that RLM is initialized with correct backend_kwargs."""
+        from unittest.mock import MagicMock, patch
+
+        from benchmarks.runner import BenchmarkRunner
+        from benchmarks.tasks.niah import NIAHBenchmark
+
+        runner = BenchmarkRunner(
+            backend="openai",
+            model="gpt-4o-test",
+            progress="none",
+        )
+
+        # Mock RLM to capture the initialization arguments
+        captured_kwargs = {}
+
+        class MockRLM:
+            def __init__(self, **kwargs):
+                captured_kwargs.update(kwargs)
+                # Raise to exit early without actually running RLM
+                raise RuntimeError("Mock exit - RLM init captured")
+
+        # RLM is imported inside _inference_rlm, so patch at rlm module level
+        with patch("rlm.RLM", MockRLM):
+            benchmark = NIAHBenchmark(context_length=1000)
+            try:
+                runner.run(benchmark, method="rlm", num_samples=1, seed=42)
+            except RuntimeError as e:
+                if "Mock exit" not in str(e):
+                    raise
+
+        # Verify the backend_kwargs passed to RLM
+        assert captured_kwargs.get("backend") == "openai"
+        assert captured_kwargs.get("backend_kwargs") == {"model_name": "gpt-4o-test"}
+
+
 class TestBenchmarkIntegration:
     """Integration tests for benchmark framework."""
 
