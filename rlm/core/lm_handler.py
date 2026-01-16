@@ -39,9 +39,16 @@ class LMRequestHandler(StreamRequestHandler):
 
             socket_send(self.connection, response.to_dict())
 
+        except (BrokenPipeError, ConnectionResetError):
+            # Client disconnected - this is expected, silently ignore
+            pass
         except Exception as e:
-            response = LMResponse.error_response(str(e))
-            socket_send(self.connection, response.to_dict())
+            try:
+                response = LMResponse.error_response(str(e))
+                socket_send(self.connection, response.to_dict())
+            except (BrokenPipeError, ConnectionResetError):
+                # Client disconnected while we tried to send error
+                pass
 
     def _handle_single(self, request: LMRequest, handler: "LMHandler") -> LMResponse:
         """Handle a single prompt request."""
@@ -97,6 +104,18 @@ class ThreadingLMServer(ThreadingTCPServer):
 
     daemon_threads = True
     allow_reuse_address = True
+
+    def handle_error(self, request, client_address):
+        """Suppress expected errors when clients disconnect."""
+        import sys
+
+        exc_type, exc_value, _ = sys.exc_info()
+        # BrokenPipeError and ConnectionResetError are expected when
+        # subprocess environments disconnect after getting their response
+        if exc_type in (BrokenPipeError, ConnectionResetError):
+            return  # Silently ignore
+        # For other errors, use default behavior (print to stderr)
+        super().handle_error(request, client_address)
 
 
 class LMHandler:

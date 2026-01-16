@@ -3,21 +3,22 @@
 CLI for running RLM benchmarks.
 
 Usage:
-    # Run benchmarks
-    python -m benchmarks.cli run --benchmark oolong --num-samples 10
+    # Run benchmarks with model spec (backend:model format)
+    python -m benchmarks.cli run --benchmark niah --models openai:gpt-4o
+    python -m benchmarks.cli run --benchmark niah --models openai:gpt-4o anthropic:claude-sonnet-4-20250514
+
+    # Run with methods comparison
     python -m benchmarks.cli run --benchmark niah --methods rlm direct
 
     # Query stored results
     python -m benchmarks.cli history --benchmark oolong-toy_dnd --limit 10
     python -m benchmarks.cli compare --benchmark niah-100k --group-by method
-
-    # Legacy (no subcommand defaults to 'run')
-    python -m benchmarks.cli --benchmark oolong --num-samples 10
 """
 
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 
 from benchmarks.base import BenchmarkResult
@@ -26,6 +27,37 @@ from benchmarks.runner import BenchmarkRunner, compare_methods
 from benchmarks.tasks.browsecomp import BrowseCompPlusBenchmark
 from benchmarks.tasks.niah import NIAHBenchmark
 from benchmarks.tasks.oolong import OolongBenchmark, OolongPairsBenchmark
+
+
+@dataclass
+class ModelSpec:
+    """Parsed model specification."""
+
+    backend: str
+    model: str
+
+    def __str__(self) -> str:
+        return f"{self.backend}:{self.model}"
+
+
+def parse_model_spec(spec: str) -> ModelSpec:
+    """Parse a backend:model specification string.
+
+    Formats supported:
+        - "backend:model" -> ModelSpec(backend, model)
+        - "model" -> ModelSpec("openai", model)  # default backend
+
+    Examples:
+        - "openai:gpt-4o" -> ModelSpec("openai", "gpt-4o")
+        - "anthropic:claude-sonnet-4-20250514" -> ModelSpec("anthropic", "claude-sonnet-4-20250514")
+        - "gpt-4o" -> ModelSpec("openai", "gpt-4o")
+    """
+    if ":" in spec:
+        parts = spec.split(":", 1)
+        return ModelSpec(backend=parts[0], model=parts[1])
+    else:
+        # Default to openai backend
+        return ModelSpec(backend="openai", model=spec)
 
 
 def get_benchmark(args: argparse.Namespace):
@@ -279,16 +311,24 @@ def main():
         help="Output file path for results (JSON)",
     )
     run_parser.add_argument(
+        "--models",
+        nargs="+",
+        default=None,
+        help="Model specs as backend:model (e.g., openai:gpt-4o anthropic:claude-sonnet-4-20250514). "
+        "Can specify multiple for comparison. Default: openai/gpt-4o-mini",
+    )
+    # Legacy args for backwards compatibility
+    run_parser.add_argument(
         "--backend",
         type=str,
-        default="openai",
-        help="LLM backend (default: openai)",
+        default=None,
+        help="(Legacy) LLM backend. Prefer --models backend:model syntax.",
     )
     run_parser.add_argument(
         "--model",
         type=str,
-        default="gpt-5-mini",
-        help="Model name (default: gpt-5-mini)",
+        default=None,
+        help="(Legacy) Model name. Prefer --models backend:model syntax.",
     )
     run_parser.add_argument(
         "--environment",
@@ -389,18 +429,24 @@ def main():
         return 1
 
 
+def get_model_specs(args: argparse.Namespace) -> list[ModelSpec]:
+    """Get model specifications from args, handling legacy and new formats."""
+    if args.models:
+        # New format: --models backend:model [backend:model ...]
+        return [parse_model_spec(spec) for spec in args.models]
+    elif args.backend or args.model:
+        # Legacy format: --backend X --model Y
+        backend = args.backend or "openai"
+        model = args.model or "gpt-4o-mini"
+        return [ModelSpec(backend=backend, model=model)]
+    else:
+        # Default
+        return [ModelSpec(backend="openai", model="gpt-4o-mini")]
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """Run benchmarks (main command)."""
-    runner = BenchmarkRunner(
-        backend=args.backend,
-        model=args.model,
-        environment=args.environment,
-        max_iterations=args.max_iterations,
-        verbose=args.verbose,
-        log_dir=args.log_dir,
-        max_workers=args.max_workers,
-        progress=args.progress,
-    )
+    model_specs = get_model_specs(args)
 
     if args.benchmark == "all":
         benchmarks = get_all_benchmarks(args)
@@ -408,42 +454,55 @@ def cmd_run(args: argparse.Namespace) -> int:
         benchmarks = [get_benchmark(args)]
 
     all_results = {}
+    store = ResultsStore(args.results_dir)
 
-    for benchmark in benchmarks:
-        print(f"\n{'=' * 60}")
-        print(f"Running: {benchmark.name}")
-        print(f"Description: {benchmark.description}")
-        print(f"{'=' * 60}")
+    for model_spec in model_specs:
+        print(f"\n{'=' * 70}")
+        print(f"Model: {model_spec}")
+        print(f"{'=' * 70}")
 
-        results = compare_methods(
-            benchmark=benchmark,
-            runner=runner,
-            methods=args.methods,
-            num_samples=args.num_samples,
-            seed=args.seed,
+        runner = BenchmarkRunner(
+            backend=model_spec.backend,
+            model=model_spec.model,
+            environment=args.environment,
+            max_iterations=args.max_iterations,
+            verbose=args.verbose,
+            log_dir=args.log_dir,
+            max_workers=args.max_workers,
+            progress=args.progress,
         )
 
-        for method, result in results.items():
-            key = f"{benchmark.name}/{method}"
-            all_results[key] = result
+        for benchmark in benchmarks:
+            print(f"\nRunning: {benchmark.name}")
+            print(f"Description: {benchmark.description}")
+
+            results = compare_methods(
+                benchmark=benchmark,
+                runner=runner,
+                methods=args.methods,
+                num_samples=args.num_samples,
+                seed=args.seed,
+            )
+
+            for method, result in results.items():
+                key = f"{model_spec}/{benchmark.name}/{method}"
+                all_results[key] = result
+
+                # Save to results store
+                config = ExperimentConfig(
+                    backend=model_spec.backend,
+                    model=model_spec.model,
+                    environment=args.environment,
+                    max_iterations=args.max_iterations,
+                    num_samples=args.num_samples,
+                    seed=args.seed,
+                    method=method,
+                )
+                exp_id = store.save(result, config)
+                print(f"  Saved as experiment {exp_id}")
 
     # Print summary
     print_summary(all_results)
-
-    # Save to results store
-    store = ResultsStore(args.results_dir)
-    config = ExperimentConfig(
-        backend=args.backend,
-        model=args.model,
-        environment=args.environment,
-        max_iterations=args.max_iterations,
-        num_samples=args.num_samples,
-        seed=args.seed,
-    )
-
-    for key, result in all_results.items():
-        exp_id = store.save(result, config)
-        print(f"Saved {key} as experiment {exp_id}")
 
     if args.output:
         save_results(all_results, args.output)

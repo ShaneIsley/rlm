@@ -450,6 +450,37 @@ class TestProgressTracking:
         assert "Acc:" in captured.out
 
 
+class TestModelSpec:
+    """Tests for model specification parsing."""
+
+    def test_parse_model_spec_with_backend(self):
+        """Test parsing backend:model format."""
+        from benchmarks.cli import parse_model_spec
+
+        spec = parse_model_spec("openai:gpt-4o")
+        assert spec.backend == "openai"
+        assert spec.model == "gpt-4o"
+
+        spec = parse_model_spec("anthropic:claude-sonnet-4-20250514")
+        assert spec.backend == "anthropic"
+        assert spec.model == "claude-sonnet-4-20250514"
+
+    def test_parse_model_spec_model_only(self):
+        """Test parsing model-only format defaults to openai."""
+        from benchmarks.cli import parse_model_spec
+
+        spec = parse_model_spec("gpt-4o")
+        assert spec.backend == "openai"
+        assert spec.model == "gpt-4o"
+
+    def test_model_spec_str(self):
+        """Test ModelSpec string representation."""
+        from benchmarks.cli import ModelSpec
+
+        spec = ModelSpec(backend="anthropic", model="claude-sonnet-4-20250514")
+        assert str(spec) == "anthropic:claude-sonnet-4-20250514"
+
+
 class TestBenchmarkIntegration:
     """Integration tests for benchmark framework."""
 
