@@ -292,6 +292,8 @@ class BenchmarkRunner:
         if self.config.verbose:
             status = "✓" if sample_result.is_correct else "✗"
             print(f"  [{status}] Sample {sample_result.sample_id}: {sample_result.metrics}")
+            if sample_result.error:
+                print(f"      Error: {sample_result.error}")
 
     def _run_sequential(
         self,
