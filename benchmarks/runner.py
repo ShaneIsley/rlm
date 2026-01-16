@@ -430,6 +430,9 @@ class BenchmarkRunner:
         if self.config.log_dir:
             logger = RLMLogger(log_dir=self.config.log_dir)
 
+        # Note: We always set RLM verbose=False to avoid its output interleaving
+        # with the benchmark progress bar. The runner's verbose flag controls
+        # per-sample result output instead.
         rlm = RLM(
             backend=self.config.backend,
             backend_kwargs=self.config.backend_kwargs,
@@ -437,7 +440,7 @@ class BenchmarkRunner:
             environment_kwargs=self.config.environment_kwargs,
             max_iterations=self.config.max_iterations,
             logger=logger,
-            verbose=self.config.verbose,
+            verbose=False,
         )
 
         result = rlm.completion(prompt=sample.context, root_prompt=sample.question)
