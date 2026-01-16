@@ -136,6 +136,10 @@ class BenchmarkRunner:
                 Signature: (completed, total, sample_result, stats) -> None
             **kwargs: Additional backend or environment kwargs.
         """
+        # Default environment_kwargs: suppress SubprocessREPL overhead output
+        env_kwargs = {"verbose": False}
+        env_kwargs.update(kwargs.get("environment_kwargs", {}))
+
         self.config = RunnerConfig(
             backend=backend,
             model=model,
@@ -147,7 +151,7 @@ class BenchmarkRunner:
             progress=progress,
             progress_callback=progress_callback,
             backend_kwargs={"model_name": model, **kwargs.get("backend_kwargs", {})},
-            environment_kwargs=kwargs.get("environment_kwargs", {}),
+            environment_kwargs=env_kwargs,
         )
         self._tqdm_available: bool | None = None
 
