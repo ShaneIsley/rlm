@@ -12,6 +12,7 @@ Supports parallel execution for faster evaluation.
 Includes progress tracking with ETA via tqdm or custom callbacks.
 """
 
+import sys
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,6 +20,47 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from benchmarks.base import Benchmark, BenchmarkResult, BenchmarkSample, SampleResult
+
+
+# Error patterns that indicate fatal configuration issues (not worth retrying)
+FATAL_ERROR_PATTERNS = [
+    # Authentication/Authorization
+    ("insufficient_quota", "API quota exceeded. Add credits at https://platform.openai.com/account/billing"),
+    ("invalid_api_key", "Invalid API key. Check your API key configuration."),
+    ("invalid api key", "Invalid API key. Check your API key configuration."),
+    ("incorrect api key", "Invalid API key. Check your API key configuration."),
+    ("authentication", "Authentication failed. Verify your API key is correct."),
+    ("unauthorized", "Unauthorized. Check your API key and permissions."),
+    ("api_key", "API key issue. Check your API key configuration."),
+    # Model issues
+    ("model_not_found", "Model not found. Verify the model name is correct."),
+    ("does not exist", "Model does not exist. Check available models for your account."),
+    ("no such model", "Model not found. Check available models for your account."),
+    # Rate limiting (without retry-after)
+    ("rate_limit", "Rate limited. Consider reducing --max-workers or adding delays."),
+]
+
+
+class FatalBenchmarkError(Exception):
+    """Raised when a benchmark encounters an unrecoverable error."""
+
+    def __init__(self, message: str, suggestion: str):
+        self.message = message
+        self.suggestion = suggestion
+        super().__init__(f"{message}\n\nSuggestion: {suggestion}")
+
+
+def classify_error(error_str: str) -> tuple[bool, str]:
+    """Classify an error as fatal or transient.
+
+    Returns:
+        (is_fatal, suggestion) - If fatal, includes actionable suggestion.
+    """
+    error_lower = error_str.lower()
+    for pattern, suggestion in FATAL_ERROR_PATTERNS:
+        if pattern in error_lower:
+            return True, suggestion
+    return False, ""
 
 # Type alias for progress callback
 ProgressCallback = Callable[[int, int, "SampleResult | None", "ProgressStats"], None]
@@ -323,6 +365,18 @@ class BenchmarkRunner:
                 results.append(sample_result)
                 self._update_progress(sample_result, stats, progress_mode, pbar)
 
+                # Check for fatal errors on first sample - abort early
+                if sample_result.error and stats.completed == 1:
+                    is_fatal, suggestion = classify_error(sample_result.error)
+                    if is_fatal:
+                        if pbar:
+                            pbar.close()
+                            pbar = None
+                        print(f"\n❌ Fatal error detected: {sample_result.error}", file=sys.stderr)
+                        print(f"\n💡 {suggestion}", file=sys.stderr)
+                        print("\nAborting benchmark - fix the issue above and retry.", file=sys.stderr)
+                        return results
+
         finally:
             if pbar is not None:
                 pbar.close()
@@ -356,6 +410,7 @@ class BenchmarkRunner:
         results: dict[str, SampleResult] = {}
         lock = threading.Lock()
         pbar = None
+        fatal_error_found: tuple[str, str] | None = None  # (error, suggestion)
 
         try:
             if progress_mode == "tqdm":
@@ -395,9 +450,22 @@ class BenchmarkRunner:
                         results[sample.id] = sample_result
                         self._update_progress(sample_result, stats, progress_mode, pbar)
 
+                        # Track first fatal error (for reporting after completion)
+                        if sample_result.error and fatal_error_found is None:
+                            is_fatal, suggestion = classify_error(sample_result.error)
+                            if is_fatal:
+                                fatal_error_found = (sample_result.error, suggestion)
+
         finally:
             if pbar is not None:
                 pbar.close()
+
+        # Report fatal errors after parallel run completes
+        if fatal_error_found:
+            error, suggestion = fatal_error_found
+            print(f"\n❌ Fatal error detected: {error}", file=sys.stderr)
+            print(f"\n💡 {suggestion}", file=sys.stderr)
+            print("\nFix the issue above before running more benchmarks.", file=sys.stderr)
 
         # Return results in original sample order
         return [results[sample.id] for sample in samples]
