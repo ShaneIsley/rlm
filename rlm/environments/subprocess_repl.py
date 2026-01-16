@@ -259,6 +259,7 @@ class SubprocessREPL(NonIsolatedEnv):
         allowed_packages: list[str] | None = None,
         auto_approve_packages: bool = False,
         package_approval_callback: Callable[[str], bool] | None = None,
+        verbose: bool = False,
         **kwargs,
     ):
         """
@@ -276,6 +277,7 @@ class SubprocessREPL(NonIsolatedEnv):
             allowed_packages: Pre-approved packages (no prompt needed).
             auto_approve_packages: If True, install packages without prompting.
             package_approval_callback: Custom function for package approval.
+            verbose: If True, print overhead summary on cleanup (default: False).
         """
         super().__init__(persistent=persistent, depth=depth, **kwargs)
 
@@ -295,6 +297,7 @@ class SubprocessREPL(NonIsolatedEnv):
         self.sandbox = sandbox
         self.auto_approve = auto_approve_packages
         self.approval_callback = package_approval_callback or self._default_approval
+        self.verbose = verbose
 
         # Pre-approved packages (stdlib + user-specified)
         self.allowed_packages: set[str] = {
@@ -869,8 +872,8 @@ class SubprocessREPL(NonIsolatedEnv):
                 pass
             self._socket_server = None
 
-        # Print overhead summary
-        if hasattr(self, "_overhead_stats"):
+        # Print overhead summary (only if verbose)
+        if hasattr(self, "_overhead_stats") and getattr(self, "verbose", True):
             self.print_overhead_summary()
 
         # Unregister from emergency cleanup
