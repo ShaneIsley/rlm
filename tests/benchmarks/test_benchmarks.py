@@ -568,6 +568,54 @@ class TestModelPropagation:
         assert captured_kwargs.get("backend_kwargs") == {"model_name": "gpt-4o-test"}
 
 
+class TestErrorClassification:
+    """Tests for error classification and fatal error handling."""
+
+    def test_classify_quota_error(self):
+        """Test that quota errors are classified as fatal."""
+        from benchmarks.runner import classify_error
+
+        error = "Error code: 429 - {'error': {'code': 'insufficient_quota'}}"
+        is_fatal, suggestion = classify_error(error)
+        assert is_fatal
+        assert "quota" in suggestion.lower() or "billing" in suggestion.lower()
+
+    def test_classify_auth_error(self):
+        """Test that auth errors are classified as fatal."""
+        from benchmarks.runner import classify_error
+
+        error = "Invalid API key provided"
+        is_fatal, suggestion = classify_error(error)
+        assert is_fatal
+        assert "key" in suggestion.lower()
+
+    def test_classify_model_error(self):
+        """Test that model not found errors are classified as fatal."""
+        from benchmarks.runner import classify_error
+
+        error = "The model 'gpt-99' does not exist"
+        is_fatal, suggestion = classify_error(error)
+        assert is_fatal
+        assert "model" in suggestion.lower()
+
+    def test_classify_transient_error(self):
+        """Test that transient errors are not classified as fatal."""
+        from benchmarks.runner import classify_error
+
+        error = "Connection timeout after 30 seconds"
+        is_fatal, suggestion = classify_error(error)
+        assert not is_fatal
+        assert suggestion == ""
+
+    def test_classify_generic_error(self):
+        """Test that unknown errors are not classified as fatal."""
+        from benchmarks.runner import classify_error
+
+        error = "Something unexpected happened"
+        is_fatal, suggestion = classify_error(error)
+        assert not is_fatal
+
+
 class TestBenchmarkIntegration:
     """Integration tests for benchmark framework."""
 
