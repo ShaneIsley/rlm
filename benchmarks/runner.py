@@ -38,6 +38,8 @@ FATAL_ERROR_PATTERNS = [
     ("no such model", "Model not found. Check available models for your account."),
     # Rate limiting (without retry-after)
     ("rate_limit", "Rate limited. Consider reducing --max-workers or adding delays."),
+    # Timeout
+    ("timed out", "Sample timed out. Try --sample-timeout to increase, or reduce --context-length."),
 ]
 
 
@@ -119,6 +121,7 @@ class RunnerConfig:
     max_workers: int = 1  # Number of parallel workers (1 = sequential)
     progress: str = "auto"  # Progress display: "auto", "tqdm", "simple", "none"
     progress_callback: ProgressCallback | None = None  # Custom progress callback
+    sample_timeout: int = 300  # Timeout per sample in seconds (default: 5 minutes)
     backend_kwargs: dict[str, Any] = field(default_factory=dict)
     environment_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -157,6 +160,7 @@ class BenchmarkRunner:
         max_workers: int = 1,
         progress: str = "auto",
         progress_callback: ProgressCallback | None = None,
+        sample_timeout: int = 300,
         **kwargs,
     ):
         """Initialize runner with configuration.
@@ -176,6 +180,7 @@ class BenchmarkRunner:
                 - "none": No progress output
             progress_callback: Custom callback for progress updates.
                 Signature: (completed, total, sample_result, stats) -> None
+            sample_timeout: Timeout per sample in seconds (default: 300 = 5 minutes).
             **kwargs: Additional backend or environment kwargs.
         """
         self.config = RunnerConfig(
@@ -188,6 +193,7 @@ class BenchmarkRunner:
             max_workers=max_workers,
             progress=progress,
             progress_callback=progress_callback,
+            sample_timeout=sample_timeout,
             backend_kwargs={"model_name": model, **kwargs.get("backend_kwargs", {})},
             environment_kwargs=kwargs.get("environment_kwargs", {}),
         )
@@ -613,14 +619,24 @@ Answer:"""
         inference_fn: Callable[[BenchmarkSample], tuple[str, dict[str, Any]]],
         benchmark: Benchmark,
     ) -> SampleResult:
-        """Run a single sample and evaluate."""
+        """Run a single sample and evaluate with timeout."""
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
         start_time = time.time()
         error = None
         prediction = ""
         metadata: dict[str, Any] = {}
+        timeout = self.config.sample_timeout
 
         try:
-            prediction, metadata = inference_fn(sample)
+            # Use a thread pool to enforce timeout
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(inference_fn, sample)
+                try:
+                    prediction, metadata = future.result(timeout=timeout)
+                except FuturesTimeoutError:
+                    error = f"Sample timed out after {timeout}s. Try --sample-timeout to increase."
+                    prediction = ""
         except Exception as e:
             error = str(e)
             prediction = ""
