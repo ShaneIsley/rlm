@@ -611,6 +611,15 @@ class TestErrorClassification:
         is_fatal, suggestion = classify_error(error)
         assert not is_fatal
 
+    def test_classify_timeout_error(self):
+        """Test that timeout errors are classified as fatal with helpful suggestion."""
+        from benchmarks.runner import classify_error
+
+        error = "Sample timed out after 300s"
+        is_fatal, suggestion = classify_error(error)
+        assert is_fatal
+        assert "timeout" in suggestion.lower() or "context" in suggestion.lower()
+
 
 class TestBenchmarkIntegration:
     """Integration tests for benchmark framework."""

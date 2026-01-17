@@ -365,6 +365,12 @@ def main():
         help="Progress display mode: auto (uses tqdm if available), tqdm (progress bar), "
         "simple (periodic status), none (quiet). Default: auto",
     )
+    run_parser.add_argument(
+        "--sample-timeout",
+        type=int,
+        default=300,
+        help="Timeout per sample in seconds (default: 300 = 5 minutes)",
+    )
 
     # Benchmark-specific options for run
     run_parser.add_argument("--context-length", type=int, default=100_000, help="NIAH context len")
@@ -470,6 +476,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             log_dir=args.log_dir,
             max_workers=args.max_workers,
             progress=args.progress,
+            sample_timeout=args.sample_timeout,
         )
 
         for benchmark in benchmarks:
