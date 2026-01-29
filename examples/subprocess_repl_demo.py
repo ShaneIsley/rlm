@@ -5,17 +5,15 @@ SubprocessREPL Demo - Direct Sandbox Usage
 This example demonstrates using SubprocessREPL directly (without an LLM)
 for secure, isolated Python code execution. Shows:
 - UV-managed virtual environments (~20ms creation)
+- Mandatory sandboxing with configurable permissions
 - macOS sandbox-exec isolation (network, filesystem)
-- Linux bubblewrap isolation (if available)
+- Linux bubblewrap isolation
 - Automatic package installation with approval
 
 Requirements:
     - uv: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-Platform Notes:
-    - macOS: Full sandbox (network + filesystem) via sandbox-exec
-    - Linux: Requires bubblewrap (bwrap) for filesystem isolation
-    - Linux without bwrap: Only process isolation, no filesystem sandbox
+    - macOS: sandbox-exec (built-in)
+    - Linux: bubblewrap (sudo apt install bubblewrap)
 
 Usage:
     python examples/subprocess_repl_demo.py
@@ -24,15 +22,20 @@ Usage:
 import platform
 
 from rlm.environments import SubprocessREPL
+from rlm.environments.sandbox import SandboxPermissions, SandboxProfiles
 
 
 def basic_execution():
     """Basic code execution in sandboxed environment."""
     print("=" * 60)
-    print("Basic Execution")
+    print("Basic Execution (with NETWORK_ALL permissions)")
     print("=" * 60)
 
-    with SubprocessREPL(sandbox=True, timeout=10.0) as repl:
+    # Use NETWORK_ALL to avoid bwrap loopback issues in containers
+    with SubprocessREPL(permissions=SandboxProfiles.NETWORK_ALL, timeout=10.0) as repl:
+        print(f"Sandbox strategy: {repl.sandbox_strategy}")
+        print(f"Permissions: {repl.permissions.network_mode}")
+
         # Simple calculation
         result = repl.execute_code("x = 2 + 2; print(f'Result: {x}')")
         print(f"stdout: {result.stdout}")
@@ -42,19 +45,18 @@ def basic_execution():
 def demonstrate_isolation():
     """Show what the sandbox blocks."""
     print("\n" + "=" * 60)
-    print("Sandbox Isolation Demo")
+    print("Sandbox Isolation Demo (STRICT permissions)")
     print("=" * 60)
     print(f"Platform: {platform.system()}")
-    if platform.system() == "Linux":
-        import shutil
 
-        if not shutil.which("bwrap"):
-            print("Note: bubblewrap not installed - filesystem sandbox disabled")
-    print()
+    # STRICT = deny all network and filesystem
+    # Note: In containerized environments, this may fail due to nested namespace issues
+    try:
+        with SubprocessREPL(permissions=SandboxProfiles.STRICT, timeout=10.0) as repl:
+            print(f"Permissions: {repl.permissions.network_mode}")
 
-    with SubprocessREPL(sandbox=True, timeout=10.0) as repl:
-        # Network is blocked
-        result = repl.execute_code("""
+            # Network is blocked
+            result = repl.execute_code("""
 import socket
 try:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -64,37 +66,28 @@ try:
 except Exception as e:
     print(f"Network: BLOCKED ({type(e).__name__})")
 """)
-        print(f"Network test: {result.stdout.strip()}")
+            print(f"Network test: {result.stdout.strip()}")
 
-        # Reading sensitive files is blocked
-        result = repl.execute_code("""
-try:
-    with open("/etc/hosts", "r") as f:
-        print("Read /etc/hosts: ALLOWED (unexpected!)")
-except Exception as e:
-    print(f"Read /etc/hosts: BLOCKED ({type(e).__name__})")
-""")
-        print(f"File read test: {result.stdout.strip()}")
-
-        # Writing outside temp_dir is blocked
-        result = repl.execute_code("""
-try:
-    with open("/tmp/escape_test.txt", "w") as f:
-        f.write("test")
-    print("Write /tmp: ALLOWED (unexpected!)")
-except Exception as e:
-    print(f"Write /tmp: BLOCKED ({type(e).__name__})")
-""")
-        print(f"File write test: {result.stdout.strip()}")
-
-        # Writing inside temp_dir works
-        result = repl.execute_code("""
+            # Writing inside temp_dir works
+            result = repl.execute_code("""
 with open("local_file.txt", "w") as f:
     f.write("hello sandbox")
 with open("local_file.txt", "r") as f:
     print(f"Write temp_dir: OK - {f.read()}")
 """)
-        print(f"Local write test: {result.stdout.strip()}")
+            print(f"Local write test: {result.stdout.strip()}")
+    except Exception as e:
+        print(f"STRICT mode failed (common in containers): {e}")
+        print("Trying with NETWORK_ALL instead...")
+
+        with SubprocessREPL(permissions=SandboxProfiles.NETWORK_ALL, timeout=10.0) as repl:
+            result = repl.execute_code("""
+with open("local_file.txt", "w") as f:
+    f.write("hello sandbox")
+with open("local_file.txt", "r") as f:
+    print(f"Write temp_dir: OK - {f.read()}")
+""")
+            print(f"Local write test: {result.stdout.strip()}")
 
 
 def state_persistence():
@@ -103,7 +96,7 @@ def state_persistence():
     print("State Persistence")
     print("=" * 60)
 
-    with SubprocessREPL(sandbox=True, persistent=True) as repl:
+    with SubprocessREPL(permissions=SandboxProfiles.NETWORK_ALL, persistent=True) as repl:
         repl.execute_code("data = [1, 2, 3]")
         repl.execute_code("data.append(4)")
         result = repl.execute_code("print(f'Final data: {data}')")
@@ -116,9 +109,9 @@ def package_installation():
     print("Package Installation (auto-approve)")
     print("=" * 60)
 
-    # auto_approve_packages=True skips the interactive prompt
+    # Need NETWORK_ALL to download packages
     with SubprocessREPL(
-        sandbox=True,
+        permissions=SandboxProfiles.NETWORK_ALL,
         auto_approve_packages=True,
         timeout=30.0,
     ) as repl:
@@ -138,7 +131,7 @@ def context_loading():
     print("Context Loading")
     print("=" * 60)
 
-    with SubprocessREPL(sandbox=True) as repl:
+    with SubprocessREPL(permissions=SandboxProfiles.NETWORK_ALL) as repl:
         # Load dict context
         repl.load_context({"users": ["alice", "bob"], "count": 2})
 
@@ -155,7 +148,7 @@ def overhead_tracking():
     print("Overhead Tracking")
     print("=" * 60)
 
-    with SubprocessREPL(sandbox=True) as repl:
+    with SubprocessREPL(permissions=SandboxProfiles.NETWORK_ALL) as repl:
         # Run a few executions
         for i in range(3):
             repl.execute_code(f"x = {i} * 2")
@@ -168,10 +161,10 @@ def overhead_tracking():
         print(f"Overhead ratio: {summary['overhead_percentage']:.1f}%")
 
 
-def compare_sandbox_modes():
-    """Compare sandboxed vs non-sandboxed execution."""
+def compare_permission_modes():
+    """Compare different permission configurations."""
     print("\n" + "=" * 60)
-    print("Sandbox Mode Comparison")
+    print("Permission Mode Comparison")
     print("=" * 60)
 
     code = """
@@ -187,29 +180,57 @@ except Exception as e:
 print(result)
 """
 
-    # With sandbox
-    with SubprocessREPL(sandbox=True, timeout=10.0) as repl:
+    # With network allowed
+    print("\nTesting NETWORK_ALL permissions:")
+    with SubprocessREPL(permissions=SandboxProfiles.NETWORK_ALL, timeout=10.0) as repl:
         result = repl.execute_code(code)
-        print(f"sandbox=True:  {result.stdout.strip()}")
+        print(f"  Result: {result.stdout.strip()}")
 
-    # Without sandbox
-    with SubprocessREPL(sandbox=False, timeout=10.0) as repl:
-        result = repl.execute_code(code)
-        print(f"sandbox=False: {result.stdout.strip()}")
+    # Custom permissions with specific read paths
+    print("\nTesting custom permissions (network + read /tmp):")
+    custom_perms = SandboxPermissions(allow_network=True, allow_read_paths=("/tmp",))
+    with SubprocessREPL(permissions=custom_perms, timeout=10.0) as repl:
+        print(f"  Network mode: {repl.permissions.network_mode}")
+        print(f"  Read paths: {repl.permissions.allow_read_paths}")
+
+
+def show_sandbox_info():
+    """Display sandbox strategy information."""
+    print("\n" + "=" * 60)
+    print("Sandbox Strategy Information")
+    print("=" * 60)
+
+    from rlm.environments.sandbox import get_sandbox_info, get_sandbox_strategy
+
+    info = get_sandbox_info()
+    print("Available strategies:")
+    for name, available in info.items():
+        status = "✓ available" if available else "✗ not available"
+        print(f"  {name}: {status}")
+
+    strategy = get_sandbox_strategy()
+    print(f"\nActive strategy: {strategy.name()}")
+    print(f"Capabilities:")
+    caps = strategy.capabilities()
+    print(f"  - Network deny-all: {caps.network_deny_all}")
+    print(f"  - Network host allowlist: {caps.network_host_allowlist}")
+    print(f"  - Filesystem isolation: {caps.filesystem_read_allowlist}")
 
 
 if __name__ == "__main__":
-    print("SubprocessREPL Demo - Direct Sandbox Usage")
-    print("Requires: uv (https://astral.sh/uv)\n")
+    print("SubprocessREPL Demo - Mandatory Sandbox with Configurable Permissions")
+    print("Requires: uv (https://astral.sh/uv)")
+    print("Requires: sandbox-exec (macOS) or bubblewrap (Linux)\n")
 
+    show_sandbox_info()
     basic_execution()
     demonstrate_isolation()
     state_persistence()
     context_loading()
     overhead_tracking()
-    compare_sandbox_modes()
+    compare_permission_modes()
 
-    # Uncomment to test package installation (requires network when sandbox=False)
+    # Uncomment to test package installation (requires network)
     # package_installation()
 
     print("\n" + "=" * 60)

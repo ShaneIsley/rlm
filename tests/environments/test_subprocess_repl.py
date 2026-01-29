@@ -7,10 +7,18 @@ from unittest.mock import patch
 
 import pytest
 
-# Skip all tests if uv is not installed
-pytestmark = pytest.mark.skipif(
-    not shutil.which("uv"), reason="uv is required for SubprocessREPL tests"
-)
+from rlm.environments.sandbox import SandboxPermissions, is_sandbox_available
+
+# Skip all tests if uv is not installed or sandbox unavailable
+pytestmark = [
+    pytest.mark.skipif(not shutil.which("uv"), reason="uv is required for SubprocessREPL tests"),
+    pytest.mark.skipif(not is_sandbox_available(), reason="sandbox (bwrap or sandbox-exec) required"),
+]
+
+# Permissions for tests that need code execution to work
+# In containerized environments, --unshare-net can fail, so we allow network
+# to avoid "bwrap: loopback: Failed RTM_NEWADDR" errors
+TEST_PERMISSIONS = SandboxPermissions(allow_network=True)
 
 
 class TestSubprocessREPLBasic:
@@ -38,7 +46,7 @@ class TestSubprocessREPLBasic:
         """Should execute simple Python code."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             result = repl.execute_code("x = 1 + 1\nprint(x)")
 
             assert "2" in result.stdout
@@ -49,7 +57,7 @@ class TestSubprocessREPLBasic:
         """Should capture errors in stderr."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             result = repl.execute_code("raise ValueError('test error')")
 
             assert "ValueError" in result.stderr
@@ -59,7 +67,7 @@ class TestSubprocessREPLBasic:
         """Variables should persist between execute_code calls."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             repl.execute_code("my_var = 42")
             result = repl.execute_code("print(my_var)")
 
@@ -69,7 +77,7 @@ class TestSubprocessREPLBasic:
         """Execution should timeout after specified duration."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL(timeout=1.0) as repl:
+        with SubprocessREPL(timeout=1.0, permissions=TEST_PERMISSIONS) as repl:
             result = repl.execute_code("import time; time.sleep(10)")
 
             assert "timed out" in result.stderr.lower()
@@ -93,7 +101,7 @@ class TestSubprocessREPLContext:
         """Should load string context as context_0."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             repl.load_context("Hello, World!")
             result = repl.execute_code("print(context)")
 
@@ -103,7 +111,7 @@ class TestSubprocessREPLContext:
         """Should load dict context as context_0."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             repl.load_context({"key": "value", "number": 42})
             result = repl.execute_code("print(context['key'], context['number'])")
 
@@ -114,7 +122,7 @@ class TestSubprocessREPLContext:
         """Should support multiple versioned contexts."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             repl.add_context("First context", 0)
             repl.add_context("Second context", 1)
 
@@ -148,7 +156,7 @@ class TestSubprocessREPLPersistence:
         """Should add message history as versioned variable."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             history = [
                 {"role": "user", "content": "Hello"},
                 {"role": "assistant", "content": "Hi there!"},
@@ -176,7 +184,7 @@ class TestSubprocessREPLOverhead:
         """Should track execution overhead."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             repl.execute_code("x = 1")
             repl.execute_code("y = 2")
 
@@ -200,7 +208,7 @@ class TestSubprocessREPLPackageApproval:
         """Standard library packages should work without approval."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             result = repl.execute_code("import json\nprint(json.dumps({'a': 1}))")
             assert '{"a": 1}' in result.stdout
 
@@ -208,7 +216,7 @@ class TestSubprocessREPLPackageApproval:
         """Should detect missing packages in error output."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL(auto_approve_packages=False) as repl:
+        with SubprocessREPL(auto_approve_packages=False, permissions=TEST_PERMISSIONS) as repl:
             # Mock the approval callback to deny
             repl.approval_callback = lambda pkg: False
             result = repl.execute_code("import nonexistent_package_xyz")
@@ -230,22 +238,44 @@ class TestSubprocessREPLPackageApproval:
 class TestSubprocessREPLSandbox:
     """Tests for sandbox functionality."""
 
-    def test_sandbox_enabled_by_default(self):
-        """Sandbox should be enabled by default."""
+    def test_sandbox_strategy_set(self):
+        """Sandbox strategy should be set automatically."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
         with SubprocessREPL() as repl:
-            assert repl.sandbox is True
+            # Should have a sandbox strategy name
+            assert repl.sandbox_strategy in ("Linux bubblewrap", "macOS sandbox-exec")
 
-    def test_sandbox_can_be_disabled(self):
-        """Sandbox can be disabled via parameter."""
+    def test_default_permissions_are_strict(self):
+        """Default permissions should be deny-all (STRICT)."""
+        from rlm.environments.sandbox import SandboxProfiles
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL(sandbox=False) as repl:
-            assert repl.sandbox is False
+        with SubprocessREPL() as repl:
+            assert repl.permissions == SandboxProfiles.STRICT
+            assert repl.permissions.allow_network is False
+            assert repl.permissions.allow_network_hosts == ()
+
+    def test_custom_permissions(self):
+        """Should accept custom permissions."""
+        from rlm.environments.sandbox import SandboxPermissions
+        from rlm.environments.subprocess_repl import SubprocessREPL
+
+        perms = SandboxPermissions(allow_network=True)
+        with SubprocessREPL(permissions=perms) as repl:
+            assert repl.permissions.allow_network is True
             # Should still execute code
             result = repl.execute_code("print('hello')")
             assert "hello" in result.stdout
+
+    def test_sandbox_capabilities_exposed(self):
+        """Sandbox capabilities should be accessible."""
+        from rlm.environments.subprocess_repl import SubprocessREPL
+
+        with SubprocessREPL() as repl:
+            caps = repl.sandbox_capabilities
+            assert caps.filesystem_read_allowlist is True
+            assert caps.network_deny_all is True
 
 
 class TestSubprocessREPLCleanup:
@@ -322,7 +352,7 @@ class TestSubprocessREPLFinalVar:
         """FINAL_VAR should return variable value."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             repl.execute_code("answer = 42")
             result = repl.execute_code("print(FINAL_VAR('answer'))")
 
@@ -332,7 +362,7 @@ class TestSubprocessREPLFinalVar:
         """FINAL_VAR should return error for missing variable."""
         from rlm.environments.subprocess_repl import SubprocessREPL
 
-        with SubprocessREPL() as repl:
+        with SubprocessREPL(permissions=TEST_PERMISSIONS) as repl:
             result = repl.execute_code("print(FINAL_VAR('nonexistent'))")
 
             assert "Error" in result.stdout

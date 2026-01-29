@@ -12,7 +12,10 @@ Exception Hierarchy:
     │   └── APIError
     ├── EnvironmentError
     │   ├── CodeExecutionError
-    │   └── VariableNotFoundError
+    │   ├── VariableNotFoundError
+    │   └── SandboxError
+    │       ├── SandboxUnavailableError
+    │       └── SandboxCapabilityError
     └── RegistryError
         ├── UnknownBackendError
         └── UnknownEnvironmentError
@@ -163,6 +166,54 @@ class LMQueryError(EnvironmentError):
     def __init__(self, message: str, original_error: Exception | None = None):
         super().__init__(f"LM query failed: {message}")
         self.original_error = original_error
+
+
+# =============================================================================
+# Sandbox Errors
+# =============================================================================
+
+
+class SandboxError(EnvironmentError):
+    """Base exception for sandbox-related errors.
+
+    Raised when there's an issue with sandbox configuration or enforcement.
+    """
+
+    pass
+
+
+class SandboxUnavailableError(SandboxError):
+    """No sandbox strategy available on this system.
+
+    Raised when SubprocessREPL cannot find a usable sandbox implementation.
+    """
+
+    def __init__(self, messages: list[str]):
+        combined = "\n".join(f"  - {m}" for m in messages)
+        message = f"No sandbox available on this system. Options:\n{combined}"
+        super().__init__(message)
+        self.messages = messages
+
+
+class SandboxCapabilityError(SandboxError):
+    """Requested permissions exceed sandbox capabilities.
+
+    Raised when permissions require capabilities the sandbox cannot enforce.
+    """
+
+    def __init__(
+        self,
+        strategy_name: str,
+        capability: str,
+        suggestion: str | None = None,
+    ):
+        message = f"{strategy_name} cannot enforce {capability}."
+        if suggestion:
+            message += f" {suggestion}"
+        super().__init__(message)
+        self.strategy_name = strategy_name
+        self.capability = capability
+        self.suggestion = suggestion
 
 
 # =============================================================================

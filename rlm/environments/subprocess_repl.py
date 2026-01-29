@@ -1,23 +1,37 @@
 """
-Subprocess-based REPL environment with optional platform-specific sandboxing.
+Subprocess-based REPL environment with mandatory platform-specific sandboxing.
 
 This environment runs Python code in a separate subprocess with UV-managed
-virtual environments, providing process-level isolation and optional
+virtual environments, providing process-level isolation and mandatory
 filesystem/network sandboxing.
 
 Requirements:
     - uv (https://github.com/astral-sh/uv)
-
-Optional (for sandboxing):
     - macOS: sandbox-exec (built-in)
     - Linux: bubblewrap (bwrap)
+
+Example:
+    from rlm.environments import SubprocessREPL
+    from rlm.environments.sandbox import SandboxPermissions, SandboxProfiles
+
+    # Maximum isolation (default - deny all network/filesystem)
+    with SubprocessREPL() as repl:
+        result = repl.execute_code("print('sandboxed')")
+
+    # Allow HTTPS network access
+    with SubprocessREPL(permissions=SandboxProfiles.NETWORK_HTTPS) as repl:
+        result = repl.execute_code("import requests; ...")
+
+    # Custom permissions
+    perms = SandboxPermissions().with_read_paths("/data")
+    with SubprocessREPL(permissions=perms) as repl:
+        ...
 """
 
 import atexit
 import base64
 import json
 import os
-import platform
 import re
 import shutil
 import signal
@@ -35,6 +49,12 @@ from rlm.core.comms_utils import LMRequest, send_lm_request, send_lm_request_bat
 from rlm.core.exceptions import ConfigurationError
 from rlm.core.types import REPLResult, RLMChatCompletion
 from rlm.environments.base_env import NonIsolatedEnv
+from rlm.environments.sandbox import (
+    SandboxPermissions,
+    SandboxProfiles,
+    SandboxStrategy,
+    get_sandbox_strategy,
+)
 
 # =============================================================================
 # Global Cleanup Registry
@@ -226,21 +246,31 @@ print(json.dumps(result, ensure_ascii=False))
 
 class SubprocessREPL(NonIsolatedEnv):
     """
-    Subprocess-based REPL with UV venv and optional platform sandboxing.
+    Subprocess-based REPL with UV venv and mandatory platform sandboxing.
 
     Features:
         - Process isolation (separate Python interpreter)
         - UV-managed virtual environments (~50ms creation)
-        - Platform-specific sandboxing (macOS sandbox-exec, Linux bwrap)
+        - Mandatory platform-specific sandboxing (macOS sandbox-exec, Linux bwrap)
+        - Deny-all default permissions with explicit allowlists
         - Interactive package approval
         - Overhead tracking with summary
         - Robust cleanup (atexit, signals, stale detection)
         - SupportsPersistence protocol for multi-turn conversations
 
     Example:
+        # Maximum isolation (default)
         with SubprocessREPL() as repl:
             result = repl.execute_code("x = 1 + 1")
             print(result.stdout)
+
+        # Allow network access
+        from rlm.environments.sandbox import SandboxProfiles
+        with SubprocessREPL(permissions=SandboxProfiles.NETWORK_ALL) as repl:
+            result = repl.execute_code("import requests; ...")
+
+    Raises:
+        SandboxUnavailableError: If no sandbox is available on this system.
     """
 
     TEMP_PREFIX = "rlm_subprocess_"
@@ -255,7 +285,8 @@ class SubprocessREPL(NonIsolatedEnv):
         # SubprocessREPL-specific options
         timeout: float = 30.0,
         memory_limit_mb: int = 512,
-        sandbox: bool = True,
+        permissions: SandboxPermissions | None = None,
+        sandbox_strategy: str | None = None,
         allowed_packages: list[str] | None = None,
         auto_approve_packages: bool = False,
         package_approval_callback: Callable[[str], bool] | None = None,
@@ -273,11 +304,20 @@ class SubprocessREPL(NonIsolatedEnv):
             depth: Recursion depth for nested LLM calls.
             timeout: Maximum execution time in seconds.
             memory_limit_mb: Memory limit for subprocess (best-effort).
-            sandbox: Enable platform-specific sandboxing if available.
+            permissions: Sandbox permissions (default: deny-all).
+                Use SandboxProfiles for common configurations or
+                SandboxPermissions for custom settings.
+            sandbox_strategy: Specific sandbox strategy name, or None for
+                auto-detection. Usually not needed.
             allowed_packages: Pre-approved packages (no prompt needed).
             auto_approve_packages: If True, install packages without prompting.
             package_approval_callback: Custom function for package approval.
             verbose: If True, print overhead summary on cleanup (default: False).
+
+        Raises:
+            SandboxUnavailableError: If no sandbox is available.
+            SandboxCapabilityError: If permissions require unsupported capabilities.
+            ConfigurationError: If uv is not installed.
         """
         super().__init__(persistent=persistent, depth=depth, **kwargs)
 
@@ -289,12 +329,18 @@ class SubprocessREPL(NonIsolatedEnv):
                 missing_field="uv",
             )
 
+        # Initialize sandbox (required - will raise if unavailable)
+        self._sandbox: SandboxStrategy = get_sandbox_strategy(sandbox_strategy)
+        self._permissions: SandboxPermissions = permissions or SandboxProfiles.STRICT
+
+        # Validate that permissions are enforceable by this sandbox
+        self._sandbox.validate_permissions(self._permissions)
+
         _register_global_cleanup()
 
         self.lm_handler_address = lm_handler_address
         self.timeout = timeout
         self.memory_limit_mb = memory_limit_mb
-        self.sandbox = sandbox
         self.auto_approve = auto_approve_packages
         self.approval_callback = package_approval_callback or self._default_approval
         self.verbose = verbose
@@ -345,6 +391,29 @@ class SubprocessREPL(NonIsolatedEnv):
             self.load_context(context_payload)
         if setup_code:
             self.execute_code(setup_code)
+
+    # =========================================================================
+    # Sandbox Properties
+    # =========================================================================
+
+    @property
+    def sandbox_strategy(self) -> str:
+        """Return the name of the active sandbox strategy."""
+        return self._sandbox.name()
+
+    @property
+    def permissions(self) -> SandboxPermissions:
+        """Return the current sandbox permissions."""
+        return self._permissions
+
+    @property
+    def sandbox_capabilities(self):
+        """Return the capabilities of the active sandbox strategy."""
+        return self._sandbox.capabilities()
+
+    # =========================================================================
+    # Setup and Lifecycle
+    # =========================================================================
 
     def setup(self):
         """Create temp directory, venv, and socket server."""
@@ -511,127 +580,13 @@ class SubprocessREPL(NonIsolatedEnv):
         )
 
     def _get_sandbox_command(self, python_cmd: list[str]) -> list[str]:
-        """Wrap python command with platform-specific sandbox."""
-        if not self.sandbox:
-            return python_cmd
-
-        system = platform.system()
-
-        if system == "Darwin":
-            return self._macos_sandbox_wrap(python_cmd)
-        elif system == "Linux":
-            return self._linux_sandbox_wrap(python_cmd)
-        else:
-            return python_cmd
-
-    def _macos_sandbox_wrap(self, cmd: list[str]) -> list[str]:
-        """Wrap with macOS sandbox-exec."""
-        if not os.path.exists("/usr/bin/sandbox-exec"):
-            return cmd
-
-        # Get both symlink and real paths (macOS needs both for /var/folders)
-        real_temp_dir = os.path.realpath(self.temp_dir)
-        real_venv_path = os.path.realpath(self.venv_path)
-        temp_dir = self.temp_dir
-        venv_path = self.venv_path
-        home_dir = os.path.expanduser("~")
-        real_home_dir = os.path.realpath(home_dir)
-
-        # Find the actual Python interpreter location (may be in ~/.local/share/uv/)
-        python_path = os.path.join(self.venv_path, "bin", "python")
-        real_python = os.path.realpath(python_path)
-        python_install_dir = os.path.dirname(os.path.dirname(real_python))
-
-        # Hybrid approach: allow default then deny specific sensitive paths
-        # This ensures Python can run while blocking access to sensitive data
-        profile = f"""
-(version 1)
-
-;; Start with permissive defaults (needed for Python/dyld)
-(allow default)
-
-;; ============ NETWORK ============
-;; Block all external network access
-(deny network-outbound (remote ip))
-
-;; ============ FILE WRITES ============
-;; Block ALL writes first
-(deny file-write*)
-
-;; Allow writes ONLY to our temp directory
-(allow file-write* (subpath "{real_temp_dir}"))
-(allow file-write* (subpath "{temp_dir}"))
-
-;; ============ FILE READS ============
-;; Block reads to sensitive directories
-(deny file-read* (subpath "{real_home_dir}"))
-(deny file-read* (subpath "{home_dir}"))
-(deny file-read* (subpath "/Users"))
-(deny file-read* (subpath "/home"))
-(deny file-read* (subpath "/etc"))
-(deny file-read* (subpath "/private/etc"))
-
-;; Allow specific /etc files needed for SSL/DNS
-(allow file-read* (literal "/etc/ssl/cert.pem"))
-(allow file-read* (literal "/etc/ssl/certs"))
-(allow file-read* (literal "/etc/resolv.conf"))
-(allow file-read* (literal "/private/etc/ssl/cert.pem"))
-(allow file-read* (literal "/private/etc/resolv.conf"))
-
-;; Allow our specific paths (overrides the denies above)
-(allow file-read* (subpath "{real_temp_dir}"))
-(allow file-read* (subpath "{temp_dir}"))
-(allow file-read* (subpath "{real_venv_path}"))
-(allow file-read* (subpath "{venv_path}"))
-(allow file-read* (subpath "{python_install_dir}"))
-"""
-        profile_path = os.path.join(self.temp_dir, "sandbox.sb")
-        with open(profile_path, "w") as f:
-            f.write(profile)
-
-        return ["/usr/bin/sandbox-exec", "-f", profile_path] + cmd
-
-    def _linux_sandbox_wrap(self, cmd: list[str]) -> list[str]:
-        """Wrap with Linux bubblewrap (if available)."""
-        if not shutil.which("bwrap"):
-            return cmd
-
-        bwrap_cmd = [
-            "bwrap",
-            "--ro-bind",
-            "/usr",
-            "/usr",
-            "--ro-bind",
-            "/lib",
-            "/lib",
-            "--ro-bind",
-            "/bin",
-            "/bin",
-            "--ro-bind",
-            "/sbin",
-            "/sbin",
-        ]
-
-        # Add /lib64 if it exists
-        if os.path.exists("/lib64"):
-            bwrap_cmd.extend(["--ro-bind", "/lib64", "/lib64"])
-
-        bwrap_cmd.extend(
-            [
-                "--ro-bind",
-                self.venv_path,
-                self.venv_path,
-                "--bind",
-                self.temp_dir,
-                self.temp_dir,
-                "--unshare-net",
-                "--unshare-pid",
-                "--die-with-parent",
-                "--",
-            ]
+        """Wrap python command with sandbox enforcement."""
+        return self._sandbox.wrap_command(
+            cmd=python_cmd,
+            temp_dir=self.temp_dir,
+            venv_path=self.venv_path,
+            permissions=self._permissions,
         )
-
-        return bwrap_cmd + cmd
 
     def execute_code(self, code: str) -> REPLResult:
         """Execute code in subprocess and return result."""
