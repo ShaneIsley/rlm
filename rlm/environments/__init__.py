@@ -23,14 +23,14 @@ __all__ = [
 
 
 def get_environment(
-    environment: Literal["local", "subprocess", "modal", "docker", "prime"],
+    environment: Literal["local", "subprocess", "modal", "docker", "prime", "daytona"],
     environment_kwargs: dict[str, Any],
 ) -> BaseEnv:
     """
     Routes a specific environment and the args (as a dict) to the appropriate environment if supported.
 
     Args:
-        environment: The environment type (e.g., "local", "docker", "modal", "prime")
+        environment: The environment type (e.g., "local", "docker", "modal", "prime", "daytona")
         environment_kwargs: Keyword arguments to pass to the environment constructor
 
     Returns:
