@@ -47,6 +47,10 @@ ENVIRONMENT_REGISTRY: dict[str, EnvironmentConfig] = {
         module="rlm.environments.prime_repl",
         class_name="PrimeREPL",
     ),
+    "daytona": EnvironmentConfig(
+        module="rlm.environments.daytona_repl",
+        class_name="DaytonaREPL",
+    ),
 }
 
 
